@@ -1,0 +1,50 @@
+# Environment variables
+.env
+.env.*
+.env.local
+.env.production
+
+# PostgreSQL local installation & data
+pgsql/
+*.sql.bak
+postgresql-binaries.zip
+placement_ai.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.pem
+*.log

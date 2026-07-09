@@ -1,0 +1,224 @@
+/* Placement AI - Profile Page Styles (Vanilla CSS) */
+
+.profile-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0px;
+}
+
+/* Header Area */
+.profile-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+.profile-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #0f172a;
+  font-family: var(--font-heading);
+}
+
+.profile-completeness-text {
+  font-size: 12px;
+  font-weight: 700;
+  color: #15803d; /* dark green */
+  font-family: var(--font-heading);
+  letter-spacing: 0.05em;
+}
+
+.profile-progress-bar-container {
+  height: 4px;
+  background: #e2e8f0;
+  border-radius: 2px;
+  position: relative;
+  margin-bottom: 32px;
+  width: 100%;
+}
+
+.profile-progress-bar-fill {
+  height: 100%;
+  background: #002d9c;
+  border-radius: 2px;
+  transition: width 0.5s ease-in-out;
+}
+
+/* Section Containers */
+.profile-section {
+  margin-bottom: 36px;
+}
+
+.profile-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 16px;
+}
+
+.profile-section-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-family: var(--font-heading);
+}
+
+.profile-section-action-btn {
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.profile-section-action-btn:hover {
+  color: #0f172a;
+  background-color: #f1f5f9;
+}
+
+.profile-check-icon {
+  color: #16a34a; /* success green */
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Section Body & Content Elements */
+.profile-summary-text {
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.6;
+}
+
+/* Experience & Education Item Blocks */
+.profile-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.profile-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.profile-item-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.profile-item-date {
+  font-size: 13px;
+  color: #475569;
+  font-weight: 500;
+}
+
+.profile-item-subtitle {
+  font-size: 14px;
+  color: #334155;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.profile-item-desc {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.profile-item-details {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.6;
+}
+
+/* Skills tag pills matching the image */
+.profile-skills-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-skill-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #eff6ff; /* light blue */
+  color: #1e40af; /* medium dark blue */
+  border-radius: 6px; /* slightly rounded corners rather than full pill, matching mockup */
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.profile-skill-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  color: #3b82f6;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.profile-skill-remove-btn:hover {
+  color: #1d4ed8;
+}
+
+/* Projects */
+.profile-project-item {
+  margin-bottom: 16px;
+}
+
+.profile-project-item:last-child {
+  margin-bottom: 0;
+}
+
+.profile-project-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.profile-project-desc {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.6;
+}
+
+/* Career Goals */
+.profile-goal-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profile-goal-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.profile-goal-text {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.6;
+}
