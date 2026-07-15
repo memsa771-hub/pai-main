@@ -176,7 +176,7 @@ export default function MyProfilePage() {
   // Export CV API call
   const handleExportCV = async () => {
     const token = localStorage.getItem('placement-ai-token');
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
     const url = `${apiBaseUrl}/api/profile/export?template=${selectedTemplate}&format=${selectedFormat}`;
     try {
       const res = await fetch(url, {
