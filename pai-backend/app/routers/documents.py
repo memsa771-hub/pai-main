@@ -95,11 +95,16 @@ async def upload_document(
     if type == "Resume":
         print("[Agent] Triggering Document Intelligence Agent on Resume...")
         system_prompt = (
-            "You are a Resume Parser Agent. Your job is to extract structured details from the following resume text "
-            "and format them strictly as a JSON object. Return ONLY valid JSON (do not include markdown code block backticks "
-            "or explanations). Extract: summary, skills (list of strings), education (list of dicts containing: degree, school, "
-            "period, gpa, details), work_experience (list of dicts containing: role, company, period, description), "
-            "projects (list of dicts containing: name, description)."
+            "You are a Resume Parser Agent. Extract structured details from the following resume text "
+            "and return ONLY valid JSON (no markdown backticks or explanations).\n"
+            "Extract:\n"
+            "- summary: string (professional summary / elevator pitch)\n"
+            "- skills: list of strings (technical/hard skills)\n"
+            "- languages: list of strings (spoken languages)\n"
+            "- education: list of dicts with: degree, school, major, period, graduation_year, gpa, details\n"
+            "- work_experience: list of dicts with: role, company, start_date, end_date, period, description, "
+            "achievements (list of quantifiable impact bullet points)\n"
+            "- projects: list of dicts with: name, description, link_or_credential"
         )
         
         try:
@@ -128,6 +133,17 @@ async def upload_document(
                     pass
                 merged_skills = list(set(existing_skills + parsed_data["skills"]))
                 current_user.skills = json.dumps(merged_skills)
+
+            if parsed_data.get("languages"):
+                # Merge languages
+                existing_langs = []
+                try:
+                    if current_user.languages:
+                        existing_langs = json.loads(current_user.languages)
+                except:
+                    pass
+                merged_langs = list(set(existing_langs + parsed_data["languages"]))
+                current_user.languages = json.dumps(merged_langs)
                 
             # Add Education
             for edu in parsed_data.get("education", []):
@@ -142,7 +158,9 @@ async def upload_document(
                         user_id=current_user.id,
                         degree=edu.get("degree"),
                         school=edu.get("school"),
+                        major=edu.get("major"),
                         period=edu.get("period"),
+                        graduation_year=edu.get("graduation_year"),
                         gpa=edu.get("gpa"),
                         details=edu.get("details")
                     )
@@ -156,12 +174,16 @@ async def upload_document(
                     models.WorkExperience.company == exp.get("company")
                 ).first()
                 if not dup:
+                    achievements = exp.get("achievements", [])
                     db_exp = models.WorkExperience(
                         user_id=current_user.id,
                         role=exp.get("role"),
                         company=exp.get("company"),
                         period=exp.get("period"),
-                        description=exp.get("description")
+                        start_date=exp.get("start_date"),
+                        end_date=exp.get("end_date"),
+                        description=exp.get("description"),
+                        achievements=json.dumps(achievements) if achievements else "[]"
                     )
                     db.add(db_exp)
                     
@@ -175,7 +197,8 @@ async def upload_document(
                     db_proj = models.Project(
                         user_id=current_user.id,
                         name=proj.get("name"),
-                        description=proj.get("description")
+                        description=proj.get("description"),
+                        link_or_credential=proj.get("link_or_credential")
                     )
                     db.add(db_proj)
                     

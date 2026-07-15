@@ -75,23 +75,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     );
   };
 
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
     <aside 
       className={`sidebar-nav-container ${isOpen ? 'open' : 'collapsed'}`}
       style={{
         position: 'fixed',
-        left: '0px',
+        left: isMobile ? (isOpen ? '0px' : '-240px') : '0px',
         top: '0px',
         bottom: '0px',
-        width: isOpen ? '220px' : '68px',
+        width: isMobile ? '220px' : (isOpen ? '220px' : '68px'),
         background: '#ffffff', // Clean white background
         borderRight: '1px solid #e2e8f0', // Clean separator line on the right edge
         borderRadius: '0px', // Flush to left edge to cover empty space
         boxShadow: '4px 0 20px rgba(0, 0, 0, 0.02)', // Soft light shadow
         display: 'flex',
         flexDirection: 'column',
-        zIndex: 99,
-        transition: 'width .42s cubic-bezier(.22,1,.36,1), padding .42s cubic-bezier(.22,1,.36,1)',
+        zIndex: isMobile ? 1000 : 99,
+        transition: 'width .42s cubic-bezier(.22,1,.36,1), left .42s cubic-bezier(.22,1,.36,1), padding .42s cubic-bezier(.22,1,.36,1)',
         overflow: 'visible',
         padding: '20px 10px',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'

@@ -5,7 +5,9 @@ import datetime
 from sqlalchemy.orm import Session
 from app import models, schemas
 from app.utils.openai_client import call_deepseek
-from app.agents.research_agent import research_university
+from app.orchestrator.kernel import route_intent_orchestrator
+from app.agents import admissions_agent
+from app.agents.retention_agents import run_gap_analysis
 
 def is_casual_message(message: str) -> bool:
     """Detect brief greetings and small talk that should not trigger counselor intake mode."""
@@ -29,41 +31,71 @@ def is_casual_message(message: str) -> bool:
 
     return False
 
-def build_casual_system_prompt(user: models.User) -> str:
-    first_name = user.full_name.split()[0] if user.full_name else "there"
-    return (
-        "You are Placement AI (PAI), a friendly study-abroad assistant.\n"
-        f"The student's first name is {first_name}.\n\n"
-        "The user sent a brief, casual message — a greeting, thanks, or small talk.\n"
-        "Reply the way a normal ChatGPT or DeepSeek assistant would: warm, natural, and short "
-        "(usually 1-2 sentences).\n\n"
-        "RULES:\n"
-        "- Do NOT recite their profile, city, country, or study goals unless they asked.\n"
-        "- Do NOT start building a roadmap or ask intake questions.\n"
-        "- Do NOT ask more than one question, and only a light one like 'How can I help you today?'\n"
-        "- Avoid bullet points, long paragraphs, and consultant jargon.\n"
-        "- Be present and welcoming — not salesy, not like an onboarding form."
-    )
+def build_pai_core_orchestrator_prompt(user: models.User, profile_vault: str) -> str:
+    first_name = user.full_name.split()[0] if user.full_name else "student"
+    
+    # Parse goals & docs to check their state
+    goals_list = []
+    try:
+        if user.goals:
+            goals_list = json.loads(user.goals)
+    except:
+        pass
+    
+    docs_list = user.documents
+    has_education = len(user.education) > 0
+    
+    if not goals_list:
+        current_step_instruction = (
+            "ONBOARDING STATUS: PHASE 1 - GOAL ACQUISITION\n"
+            "- The student's goals vault is empty. Your absolute primary focus is to welcome the student and act as a warm academic Consultant.\n"
+            "- Ask open-ended but guiding questions to understand what the student wants to achieve or what their main academic/career problem is (e.g., 'I want to study in Sweden' or 'I want to get admission in FAST').\n"
+            "- Do NOT suggest specific universities, roadmaps, or helper features yet. Focus only on identifying their main goal(s).\n"
+            "- Keep your tone conversational, consultant-like, and warm."
+        )
+    elif not docs_list and not has_education:
+        current_step_instruction = (
+            "ONBOARDING STATUS: PHASE 2 - DOCUMENT COLLECTION or PHASE 3 - MANUAL QUESTIONING\n"
+            "- The student has specified goals, but has no uploaded documents and no education profile.\n"
+            "- If you have NOT asked the user for documents yet, you MUST ask if they have any documents they can upload (e.g., resume, CV, or educational transcript) to help auto-fill their profile.\n"
+            "- Explain that they can upload their documents directly using the upload button/area in the application.\n"
+            "- If you ALREADY asked for documents in the chat history and the user said they don't have any (or prefer not to), you must transition to MANUAL QUESTIONING (Phase 3). Ask targeted questions one-by-one to extract their previous education (major, school, GPA), current state/status, and intended degree/field."
+        )
+    elif not has_education:
+        current_step_instruction = (
+            "ONBOARDING STATUS: PHASE 3 - MANUAL QUESTIONING (INTAKE)\n"
+            "- The student has goals but doesn't have documents (or chose not to upload them) and their profile lacks education details.\n"
+            "- Your main focus is to ask targeted questions one-by-one to extract key profile information.\n"
+            "- Ask about their previous education (e.g., 'What is your current/previous degree, major, and GPA?'), their current state/status, or intended destination/field.\n"
+            "- Keep it structured and ask one or two questions at a time so the student is not overwhelmed.\n"
+            "- Capture these details to populate their profile."
+        )
+    else:
+        current_step_instruction = (
+            "ONBOARDING STATUS: HELPER MODE\n"
+            "- The student's goals and academic history are populated. You are now shifting from Consultant to active Helper.\n"
+            "- Assist them with their goal(s), suggest universities, explain visa requirements, trigger background sub-agents (like study_local or study_abroad), and answer their queries with detailed strategist insight."
+        )
 
-def build_counselor_system_prompt(user: models.User, profile_vault: str, has_research: bool) -> str:
-    research_rule = (
-        "6. If research results are available, reference them and direct the user to the recommendations panel."
-        if has_research
-        else "6. If they ask about a school, offer to research it — do not invent stats."
-    )
     return (
-        "You are Placement AI (PAI), a study-abroad counselor and university strategist.\n"
-        "You guide students toward international education — but you listen first.\n\n"
-        f"CURRENT STUDENT PROFILE VAULT:\n{profile_vault}\n\n"
-        "CRITICAL RULES:\n"
-        "1. MATCH THE USER'S ENERGY. Short message → short reply. Detailed question → helpful, focused answer.\n"
-        "2. NEVER repeat a question. If a detail is already in the PROFILE VAULT, do not ask for it again.\n"
-        "3. NEVER fabricate fees, scores, or deadlines. If unsure, say you'll look it up.\n"
-        "4. Be natural and concise — like a real counselor in chat, not a lecture or intake form.\n"
-        "5. Ask at most ONE follow-up question when it genuinely helps. Never stack multiple questions.\n"
-        f"{research_rule}\n\n"
-        "What makes you different from generic chatbots: you are a counselor who makes students feel heard, "
-        "never ignored or bored. Guide when they want guidance; don't push when they're just chatting."
+        "You are Placement AI (PAI), the central Agentic Operating System for student academic success.\n"
+        f"You are collaborating with a student named {first_name}.\n\n"
+        f"CURRENT STUDENT KNOWLEDGE VAULT:\n{profile_vault}\n\n"
+        "YOUR CORE IDENTITY:\n"
+        "- You are first a Consultant, and then a Helper. You guide students step-by-step through a structured intake flow before providing solutions.\n"
+        "- You manage a suite of specialized background agents under the admissions domain: study_local (domestic placement, aggregate calculators) and study_abroad (international universities, scholarships, research).\n\n"
+        f"{current_step_instruction}\n\n"
+        "HUMAN CONSULTANT PERSONA & ENGAGEMENT RULES:\n"
+        "- ACT LIKE A REAL HUMAN ACADEMIC CONSULTANT. Write with a warm, personal, and engaging tone. Avoid sounding like a machine or an LLM.\n"
+        "- BAN LLM BOILERPLATE. Never say things like 'Certainly!', 'As an AI...', 'I am here to assist you', 'How may I help you today?', or 'Here is a detailed guide'. Just talk naturally.\n"
+        "- DIALOG-DRIVEN FLOW. Keep your responses concise, readable, and conversational. Avoid writing long, dry walls of text. Only use bullet points or tables when presenting specific university options or merit aggregates; otherwise, write in natural, friendly paragraphs.\n"
+        "- EMPATHIZE & VALIDATE. Validate the student's choices and empathize with their academic stress (e.g. 'Sweden is an amazing destination—the tech scene there is fantastic, so I completely see why you want to go!', 'Studying local engineering is tough, let's map this out step-by-step').\n"
+        "- COLLABORATIVE VIBE. Make them feel like they are chatting with a friendly mentor who is sitting right across from them at a desk.\n\n"
+        "CRITICAL EXECUTION RULES:\n"
+        "1. ADHERE TO THE ONBOARDING PHASES. Do not offer solutions, map out roadmaps, or list matching universities if you are in Phase 1 or Phase 2.\n"
+        "2. MATCH THE USER'S ENERGY. Short greeting -> short, warm response. Deep academic dilemma -> focused, thorough guidance.\n"
+        "3. NEVER ask a question if the data point is already present in the STUDENT KNOWLEDGE VAULT.\n"
+        "4. When in Helper Mode, act as an orchestrator: synthetically integrate observations from sub-agents (e.g., matching local merit metrics or international visa guidelines) into a unified conversation panel."
     )
 
 def format_profile_for_prompt(user: models.User) -> str:
@@ -73,10 +105,63 @@ def format_profile_for_prompt(user: models.User) -> str:
             skills_list = json.loads(user.skills)
     except:
         pass
+
+    languages_list = []
+    try:
+        if user.languages:
+            languages_list = json.loads(user.languages)
+    except:
+        pass
+
+    goals_list = []
+    try:
+        if user.goals:
+            goals_list = json.loads(user.goals)
+    except:
+        pass
         
-    edu_list = [{"degree": e.degree, "school": e.school, "gpa": e.gpa, "period": e.period} for e in user.education]
-    work_list = [{"role": w.role, "company": w.company, "period": w.period} for w in user.work_experience]
-    proj_list = [{"name": p.name} for p in user.projects]
+    edu_list = []
+    for e in user.education:
+        edu_entry = {"degree": e.degree, "school": e.school, "gpa": e.gpa, "period": e.period}
+        if e.major:
+            edu_entry["major"] = e.major
+        if e.graduation_year:
+            edu_entry["graduation_year"] = e.graduation_year
+        edu_list.append(edu_entry)
+
+    work_list = []
+    for w in user.work_experience:
+        work_entry = {"role": w.role, "company": w.company, "period": w.period}
+        if w.start_date:
+            work_entry["start_date"] = w.start_date
+        if w.end_date:
+            work_entry["end_date"] = w.end_date
+        achievements = []
+        try:
+            if w.achievements:
+                achievements = json.loads(w.achievements)
+        except:
+            pass
+        if achievements:
+            work_entry["achievements"] = achievements
+        work_list.append(work_entry)
+
+    proj_list = []
+    for p in user.projects:
+        proj_entry = {"name": p.name}
+        if p.description:
+            proj_entry["description"] = p.description
+        if p.link_or_credential:
+            proj_entry["link_or_credential"] = p.link_or_credential
+        proj_list.append(proj_entry)
+
+    docs_list = []
+    for d in user.documents:
+        docs_list.append({
+            "name": d.name,
+            "type": d.type,
+            "status": d.status
+        })
     
     profile = {
         "full_name": user.full_name,
@@ -95,11 +180,58 @@ def format_profile_for_prompt(user: models.User) -> str:
         "preferred_field": user.preferred_field,
         "summary": user.summary,
         "skills": skills_list,
+        "languages": languages_list,
+        "goals": goals_list,
         "education": edu_list,
         "work_experience": work_list,
-        "projects": proj_list
+        "projects": proj_list,
+        "uploaded_documents": docs_list
     }
     return json.dumps(profile, indent=2)
+
+def evaluate_quick_replies(ai_reply: str, user_message: str, profile_vault: str) -> dict:
+    """
+    Determines if the AI's reply requires specific structured data from the user.
+    Only returns suggested_options when the AI is asking the user to choose from
+    specific categories that would update their profile.
+    """
+    system_prompt = (
+        "You are a UI Assistant that decides if quick-reply buttons should be shown to the user.\n\n"
+        "RULES:\n"
+        "- Return requires_profile_data=true ONLY when the AI reply is actively asking the user to choose "
+        "between specific, structured options that will update their student profile.\n"
+        "- Examples that SHOULD trigger options: choosing a destination country, selecting a degree level "
+        "(Bachelor's/Master's/PhD), picking a career stage, choosing a budget tier, selecting a field of study.\n"
+        "- Examples that should NOT trigger options: greetings, general advice, explaining a roadmap, "
+        "open-ended questions like 'tell me about yourself', confirmations, follow-up explanations.\n"
+        "- When triggered, provide 2-5 SHORT button labels (3-5 words each) as options.\n\n"
+        "Return strictly a JSON object:\n"
+        "{\"requires_profile_data\": boolean, \"suggested_options\": [\"Option 1\", \"Option 2\"]}\n"
+        "If requires_profile_data is false, suggested_options must be an empty list []."
+    )
+    
+    user_prompt = (
+        f"AI Reply: {ai_reply}\n"
+        f"User Message: {user_message}\n"
+        f"Current Profile: {profile_vault}"
+    )
+    
+    try:
+        result = call_deepseek(system_prompt, user_prompt, temperature=0.1)
+        clean = result.strip()
+        if clean.startswith("```json"):
+            clean = clean[7:]
+        if clean.endswith("```"):
+            clean = clean[:-3]
+        clean = clean.strip()
+        parsed = json.loads(clean)
+        return {
+            "requires_profile_data": parsed.get("requires_profile_data", False),
+            "suggested_options": parsed.get("suggested_options", [])
+        }
+    except Exception as e:
+        print(f"[Conversation] Quick-reply evaluation failed: {e}")
+        return {"requires_profile_data": False, "suggested_options": []}
 
 def handle_chat_conversation(user_message: str, session_id: str, user: models.User, db: Session) -> dict:
     # 1. Fetch/Create Session
@@ -136,92 +268,48 @@ def handle_chat_conversation(user_message: str, session_id: str, user: models.Us
     db.add(db_msg_u)
     db.commit()
 
-    casual = is_casual_message(user_message)
-
-    # 3. Dynamic Check: Did the user ask to research a program or university?
-    # Skip for casual small talk — no need to route "hi" to the research agent.
-    research_detect_sys = (
-        "You are a routing agent. Determine if the user is asking to search, research, find, suggest, or compare "
-        "specific universities, courses, tuition fees, deadlines, or scholarships in a destination country. "
-        "Return strictly a JSON object: {\"is_research\": boolean, \"university\": \"Name or null\", \"program\": \"Major or null\"}."
-    )
-    is_research = False
-    uni_name = None
-    program = None
-    
-    if not casual:
-        try:
-            route_res = call_deepseek(research_detect_sys, f"User Input: {user_message}", temperature=0.1)
-            clean_route = route_res.strip()
-            if clean_route.startswith("```json"):
-                clean_route = clean_route[7:]
-            if clean_route.endswith("```"):
-                clean_route = clean_route[:-3]
-            clean_route = clean_route.strip()
-            route_data = json.loads(clean_route)
-
-            is_research = route_data.get("is_research", False)
-            uni_name = route_data.get("university")
-            program = route_data.get("program")
-        except Exception as e:
-            print(f"[Conversation] Routing extraction failed: {e}")
-        
-    research_recommendations = None
-    if is_research:
-        # Trigger Research Agent!
-        target_uni = uni_name or user.intended_destination or "Top Universities"
-        target_program = program or user.preferred_field or "Graduate Study"
-        try:
-            print(f"[Conversation] Routing to Research Agent: {target_uni} for {target_program}")
-            research_recommendations = research_university(target_uni, target_program, user, db)
-            
-            # Save tracked university record in background
-            # If a specific university is identified, save it as "Interested"
-            if uni_name and uni_name != "null":
-                dup = db.query(models.TrackedUniversity).filter(
-                    models.TrackedUniversity.user_id == user.id,
-                    models.TrackedUniversity.name == research_recommendations["name"]
-                ).first()
-                if not dup:
-                    db_uni = models.TrackedUniversity(
-                        user_id=user.id,
-                        name=research_recommendations["name"],
-                        location=research_recommendations["location"],
-                        avg_gpa=research_recommendations["avg_gpa"],
-                        avg_gre=research_recommendations["avg_gre"],
-                        deadlines=research_recommendations["deadlines"],
-                        status="Interested",
-                        acceptance_rate=research_recommendations["acceptance_rate"],
-                        reqs=json.dumps(research_recommendations["scholarships"])
-                    )
-                    db.add(db_uni)
-                    db.commit()
-                    
-                    # Log activity
-                    activity_text = f"Added target track: {research_recommendations['name']}"
-                    # Create notifications/recent activity
-        except Exception as ex:
-            print(f"[Conversation] Research Agent failed: {ex}")
-
-    # 4. Generate AI Reply
+    # 3. Format the profile state from your database
     profile_vault = format_profile_for_prompt(user)
 
-    if casual:
-        system_prompt = build_casual_system_prompt(user)
-    else:
-        system_prompt = build_counselor_system_prompt(
-            user, profile_vault, has_research=bool(research_recommendations)
-        )
+    # 4. Let the Orchestrator Kernel figure out who owns this request
+    routing_decision = route_intent_orchestrator(user_message, profile_vault)
+    domain = routing_decision.get("primary_domain", "casual")
+    active_sub_agents = routing_decision.get("sub_agents", [])
+
+    agent_insights = {}
+    research_recommendations = None
+
+    # 5. Dynamic Hand-off to Domain Agents
+    if domain == "admissions":
+        print("[Orchestrator] Invoking Admissions Agent System...")
+        # Sub-agent: study_local
+        if "study_local" in active_sub_agents or "merit" in user_message.lower():
+            agent_insights["local_merit_calculations"] = admissions_agent.study_local(user, db, user_message)
+        
+        # Sub-agent: study_abroad
+        if "study_abroad" in active_sub_agents or "scholarship_finder" in active_sub_agents or "university_researcher" in active_sub_agents or "research" in user_message.lower():
+            abroad_insights = admissions_agent.study_abroad(user, db, user_message, active_sub_agents)
+            agent_insights.update(abroad_insights)
+            if "university_research" in abroad_insights:
+                research_recommendations = abroad_insights["university_research"]
+            
+    elif domain == "profile_builder":
+        print("[Orchestrator] Invoking Portfolio & Gap Analyst...")
+        if "gap_analyst" in active_sub_agents or "gap" in user_message.lower():
+            agent_insights["gap_analysis"] = run_gap_analysis(user, db)
+
+    # 6. Generate AI Reply
+    system_prompt = build_pai_core_orchestrator_prompt(user, profile_vault)
     
     user_prompt = f"Chat History:\n{history_context}\nUSER: {user_message}\n"
-    if research_recommendations:
-        user_prompt += f"\n[Research Panel Data Found: {json.dumps(research_recommendations)}]"
+    if agent_insights:
+        user_prompt += f"\n[System Background Insights Loaded: {json.dumps(agent_insights)}]"
 
     try:
         ai_reply = call_deepseek(
             system_prompt,
             user_prompt,
-            temperature=0.5 if casual else 0.3,
+            temperature=0.5 if domain == "casual" else 0.3,
         )
     except Exception as e:
         ai_reply = "I'm sorry, I'm having trouble connecting to my strategist modules. Let me check the connection and try again."
@@ -238,57 +326,12 @@ def handle_chat_conversation(user_message: str, session_id: str, user: models.Us
     db.add(db_msg_a)
     db.commit()
 
-    # 5. Background Facts Extraction Pass
-    # Scans the user message and updates profile details
-    extract_prompt = (
-        "You are an Information Extraction Agent. Review the user's message, the AI's reply, and the current profile. "
-        "Identify if the student provided any new details (e.g. GPA, school, nationality, destination, preferred degree, "
-        "skills, work experience, projects, LinkedIn url, Phone prefix). "
-        "Return strictly a JSON containing only the new/updated fields. For example:\n"
-        "{\n"
-        "  \"gpa\": \"3.85\",\n"
-        "  \"intended_destination\": \"Canada\",\n"
-        "  \"skills\": [\"TensorFlow\"]\n"
-        "}\n"
-        "If no new information was provided, return strictly an empty JSON object: {}."
-    )
-    
-    extract_user = f"User Message: {user_message}\nAI Reply: {ai_reply}\nProfile: {profile_vault}"
-    
-    try:
-        ex_res = call_deepseek(extract_prompt, extract_user, temperature=0.1)
-        clean_ex = ex_res.strip()
-        if clean_ex.startswith("```json"):
-            clean_ex = clean_ex[7:]
-        if clean_ex.endswith("```"):
-            clean_ex = clean_ex[:-3]
-        clean_ex = clean_ex.strip()
-        
-        updates = json.loads(clean_ex)
-        if updates:
-            print(f"[Conversation] Background sync found profile updates: {updates}")
-            
-            # Save updates
-            if "skills" in updates:
-                # Merge skills
-                existing_skills = []
-                try:
-                    if user.skills:
-                        existing_skills = json.loads(user.skills)
-                except:
-                    pass
-                merged_skills = list(set(existing_skills + updates["skills"]))
-                user.skills = json.dumps(merged_skills)
-                del updates["skills"]
-                
-            for k, v in updates.items():
-                if hasattr(user, k) and v is not None and v != "null":
-                    setattr(user, k, str(v))
-                    
-            db.commit()
-            print("[Conversation] Vault updated in background.")
-    except Exception as ex:
-        print(f"[Conversation] Background extraction sync failed: {ex}")
+    # 7. Evaluate Quick Replies (only for non-casual messages)
+    quick_reply_data = {"requires_profile_data": False, "suggested_options": []}
+    if domain != "casual":
+        quick_reply_data = evaluate_quick_replies(ai_reply, user_message, profile_vault)
+
+
 
     # Return response payload
     return {
@@ -301,5 +344,7 @@ def handle_chat_conversation(user_message: str, session_id: str, user: models.Us
             "text": ai_reply,
             "timestamp": db_msg_a.timestamp
         },
-        "recommendations": research_recommendations
+        "recommendations": research_recommendations,
+        "requires_profile_data": quick_reply_data["requires_profile_data"],
+        "suggested_options": quick_reply_data["suggested_options"]
     }

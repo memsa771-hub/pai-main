@@ -18,6 +18,16 @@ def update_profile(profile_in: schemas.UserUpdate, current_user: models.User = D
     if "skills" in update_data and update_data["skills"] is not None:
         current_user.skills = json.dumps(update_data["skills"])
         del update_data["skills"]
+
+    # Special handling for languages lists
+    if "languages" in update_data and update_data["languages"] is not None:
+        current_user.languages = json.dumps(update_data["languages"])
+        del update_data["languages"]
+
+    # Special handling for goals lists
+    if "goals" in update_data and update_data["goals"] is not None:
+        current_user.goals = json.dumps(update_data["goals"])
+        del update_data["goals"]
         
     for key, value in update_data.items():
         setattr(current_user, key, value)
@@ -33,7 +43,9 @@ def add_education(edu_in: schemas.EducationCreate, current_user: models.User = D
         user_id=current_user.id,
         degree=edu_in.degree,
         school=edu_in.school,
+        major=edu_in.major,
         period=edu_in.period,
+        graduation_year=edu_in.graduation_year,
         gpa=edu_in.gpa,
         details=edu_in.details
     )
@@ -54,12 +66,16 @@ def delete_education(edu_id: int, current_user: models.User = Depends(get_curren
 # Experience Endpoints
 @router.post("/experience", response_model=schemas.WorkExperienceResponse)
 def add_experience(exp_in: schemas.WorkExperienceCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    achievements_json = json.dumps(exp_in.achievements) if exp_in.achievements else "[]"
     new_exp = models.WorkExperience(
         user_id=current_user.id,
         role=exp_in.role,
         company=exp_in.company,
         period=exp_in.period,
-        description=exp_in.description
+        start_date=exp_in.start_date,
+        end_date=exp_in.end_date,
+        description=exp_in.description,
+        achievements=achievements_json
     )
     db.add(new_exp)
     db.commit()
@@ -81,7 +97,8 @@ def add_project(proj_in: schemas.ProjectCreate, current_user: models.User = Depe
     new_proj = models.Project(
         user_id=current_user.id,
         name=proj_in.name,
-        description=proj_in.description
+        description=proj_in.description,
+        link_or_credential=proj_in.link_or_credential
     )
     db.add(new_proj)
     db.commit()
@@ -106,38 +123,85 @@ def export_cv(
     db: Session = Depends(get_db)
 ):
     if format == "json":
-        # Return raw profile details in JSON response
+        # Return premium cv_profile JSON structure
         skills_list = []
         try:
             if current_user.skills:
                 skills_list = json.loads(current_user.skills)
         except:
             pass
-            
+        
+        languages_list = []
+        try:
+            if current_user.languages:
+                languages_list = json.loads(current_user.languages)
+        except:
+            pass
+
+        location = ", ".join(filter(None, [current_user.city, current_user.country]))
+
+        education_list = []
+        for e in current_user.education:
+            education_list.append({
+                "institution": e.school,
+                "degree": e.degree,
+                "major": e.major or None,
+                "graduation_year": e.graduation_year or e.period or None,
+                "gpa_or_grades": e.gpa or None
+            })
+
+        experience_list = []
+        for w in current_user.work_experience:
+            achievements = []
+            try:
+                if w.achievements:
+                    achievements = json.loads(w.achievements)
+            except:
+                pass
+            if not achievements and w.description:
+                achievements = [w.description]
+
+            experience_list.append({
+                "company": w.company,
+                "role": w.role,
+                "start_date": w.start_date or w.period or None,
+                "end_date": w.end_date or None,
+                "achievements": achievements
+            })
+
+        projects_certs = []
+        for p in current_user.projects:
+            projects_certs.append({
+                "title": p.name,
+                "description": p.description or None,
+                "link_or_credential": p.link_or_credential or None
+            })
+
         profile_json = {
-            "name": current_user.full_name,
-            "email": current_user.email,
-            "phone": current_user.phone,
-            "dob": current_user.dob,
-            "gender": current_user.gender,
-            "nationality": current_user.nationality,
-            "country": current_user.country,
-            "city": current_user.city,
-            "linkedin": current_user.linkedin,
-            "summary": current_user.summary,
-            "skills": skills_list,
-            "education": [{"degree": e.degree, "school": e.school, "period": e.period, "gpa": e.gpa, "details": e.details} for e in current_user.education],
-            "work_experience": [{"role": w.role, "company": w.company, "period": w.period, "description": w.description} for w in current_user.work_experience],
-            "projects": [{"name": p.name, "description": p.description} for p in current_user.projects]
+            "cv_profile": {
+                "contact_information": {
+                    "full_name": current_user.full_name,
+                    "email": current_user.email,
+                    "phone": current_user.phone,
+                    "location": location or None
+                },
+                "professional_summary": current_user.summary or None,
+                "education": education_list,
+                "work_experience": experience_list,
+                "skills": {
+                    "technical_or_hard_skills": skills_list,
+                    "languages": languages_list
+                },
+                "projects_and_certifications": projects_certs
+            }
         }
         
-        # Return as JSON file attachment
         json_str = json.dumps(profile_json, indent=2)
         io_stream = io.BytesIO(json_str.encode('utf-8'))
         return StreamingResponse(
             io_stream,
             media_type="application/json",
-            headers={"Content-Disposition": f"attachment; filename=placement_ai_profile_{current_user.id}.json"}
+            headers={"Content-Disposition": f"attachment; filename=placement_ai_cv_{current_user.id}.json"}
         )
         
     elif format == "docx":

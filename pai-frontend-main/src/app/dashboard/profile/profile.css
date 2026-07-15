@@ -1,62 +1,207 @@
-/* Placement AI - Profile Page Styles (Vanilla CSS) */
+/* ═══════════════════════════════════════════════════════════════
+   PAI — Premium CV Dashboard Layout
+   Minimalist, executive-grade design representing a clean resume sheet.
+   ═══════════════════════════════════════════════════════════════ */
 
 .profile-container {
   max-width: 1000px;
-  margin: 0 auto;
-  padding: 0px;
+  margin: 0;
+  padding: 0 0 48px 0;
 }
 
-/* Header Area */
-.profile-header-row {
+@media (max-width: 768px) {
+  .profile-container {
+    padding: 0 0 24px 0;
+  }
+}
+
+/* ── Premium CV Paper Sheet ── */
+.profile-cv-sheet {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  padding: 40px 48px;
+  transition: all 0.3s ease;
+}
+
+html[data-theme='dark'] .profile-cv-sheet {
+  background: #1e293b;
+  border-color: #334155;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Header Area ── */
+.profile-cv-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.profile-cv-avatar-wrap {
+  position: relative;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid #e2e8f0;
+  background: #f1f5f9;
+  flex-shrink: 0;
+  cursor: pointer;
+  group: hover;
+}
+
+html[data-theme='dark'] .profile-cv-avatar-wrap {
+  border-color: #475569;
+  background: #334155;
+}
+
+.profile-cv-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-cv-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 800;
+  color: #002d9c;
+}
+
+html[data-theme='dark'] .profile-cv-avatar-fallback {
+  color: #60a5fa;
+}
+
+.profile-cv-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.profile-cv-avatar-wrap:hover .profile-cv-avatar-overlay {
+  opacity: 1;
+}
+
+.profile-cv-info {
+  flex: 1;
+  min-width: 250px;
+}
+
+.profile-cv-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.profile-cv-name {
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+}
+
+html[data-theme='dark'] .profile-cv-name {
+  color: #f8fafc;
+}
+
+.profile-cv-contact-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+html[data-theme='dark'] .profile-cv-contact-row {
+  color: #94a3b8;
+}
+
+.profile-cv-contact-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Completeness Progress ── */
+.profile-progress-section {
+  margin-bottom: 36px;
+}
+
+.profile-progress-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 12px;
+  align-items: center;
+  margin-bottom: 8px;
 }
 
-.profile-title {
-  font-size: 32px;
+.profile-progress-title {
+  font-size: 13px;
   font-weight: 700;
-  color: #0f172a;
-  font-family: var(--font-heading);
+  color: #002d9c;
 }
 
-.profile-completeness-text {
-  font-size: 12px;
-  font-weight: 700;
-  color: #15803d; /* dark green */
-  font-family: var(--font-heading);
-  letter-spacing: 0.05em;
+html[data-theme='dark'] .profile-progress-title {
+  color: #60a5fa;
 }
 
 .profile-progress-bar-container {
-  height: 4px;
-  background: #e2e8f0;
-  border-radius: 2px;
-  position: relative;
-  margin-bottom: 32px;
+  height: 6px;
+  background: #f1f5f9;
+  border-radius: 3px;
   width: 100%;
+  overflow: hidden;
+}
+
+html[data-theme='dark'] .profile-progress-bar-container {
+  background: #334155;
 }
 
 .profile-progress-bar-fill {
   height: 100%;
   background: #002d9c;
-  border-radius: 2px;
-  transition: width 0.5s ease-in-out;
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Section Containers */
+html[data-theme='dark'] .profile-progress-bar-fill {
+  background: #60a5fa;
+}
+
+/* ── Sections ── */
 .profile-section {
-  margin-bottom: 36px;
+  margin-bottom: 32px;
 }
 
 .profile-section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e2e8f0;
-  margin-bottom: 16px;
+  padding-bottom: 6px;
+  border-bottom: 1.5px solid #e2e8f0;
+  margin-bottom: 14px;
+}
+
+html[data-theme='dark'] .profile-section-header {
+  border-bottom-color: #334155;
 }
 
 .profile-section-title-wrap {
@@ -66,89 +211,124 @@
 }
 
 .profile-section-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: #475569;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-family: var(--font-heading);
+}
+
+html[data-theme='dark'] .profile-section-title {
+  color: #cbd5e1;
 }
 
 .profile-section-action-btn {
   color: #94a3b8;
   cursor: pointer;
+  background: none;
+  border: none;
   padding: 4px;
-  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition: all 0.2s;
 }
 
 .profile-section-action-btn:hover {
-  color: #0f172a;
-  background-color: #f1f5f9;
+  color: #002d9c;
+  transform: scale(1.1);
+}
+
+html[data-theme='dark'] .profile-section-action-btn:hover {
+  color: #60a5fa;
 }
 
 .profile-check-icon {
-  color: #16a34a; /* success green */
+  color: #10b981;
   display: inline-flex;
   align-items: center;
 }
 
-/* Section Body & Content Elements */
+/* ── Item Content ── */
 .profile-summary-text {
   font-size: 14px;
   color: #334155;
   line-height: 1.6;
+  margin: 0;
 }
 
-/* Experience & Education Item Blocks */
+html[data-theme='dark'] .profile-summary-text {
+  color: #cbd5e1;
+}
+
 .profile-item-list {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
 .profile-item-row {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .profile-item-title {
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 700;
   color: #0f172a;
+  margin: 0;
+}
+
+html[data-theme='dark'] .profile-item-title {
+  color: #f8fafc;
 }
 
 .profile-item-date {
-  font-size: 13px;
-  color: #475569;
+  font-size: 12.5px;
+  color: #64748b;
   font-weight: 500;
 }
 
+html[data-theme='dark'] .profile-item-date {
+  color: #94a3b8;
+}
+
 .profile-item-subtitle {
-  font-size: 14px;
+  font-size: 13.5px;
   color: #334155;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+}
+
+html[data-theme='dark'] .profile-item-subtitle {
+  color: #cbd5e1;
 }
 
 .profile-item-desc {
   font-size: 13px;
-  color: #475569;
-  line-height: 1.6;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0;
+}
+
+html[data-theme='dark'] .profile-item-desc {
+  color: #94a3b8;
 }
 
 .profile-item-details {
   font-size: 13px;
-  color: #475569;
-  line-height: 1.6;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 4px 0 0 0;
 }
 
-/* Skills tag pills matching the image */
+html[data-theme='dark'] .profile-item-details {
+  color: #94a3b8;
+}
+
+/* ── tag pills ── */
 .profile-skills-wrap {
   display: flex;
   flex-wrap: wrap;
@@ -159,12 +339,19 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  background: #eff6ff; /* light blue */
-  color: #1e40af; /* medium dark blue */
-  border-radius: 6px; /* slightly rounded corners rather than full pill, matching mockup */
+  padding: 5px 12px;
+  background: #eff6ff;
+  color: #1e40af;
+  border-radius: 6px;
   font-size: 13px;
   font-weight: 600;
+  border: 1px solid rgba(30, 64, 175, 0.08);
+}
+
+html[data-theme='dark'] .profile-skill-pill {
+  background: rgba(96, 165, 250, 0.1);
+  color: #93c5fd;
+  border-color: rgba(147, 197, 253, 0.15);
 }
 
 .profile-skill-remove-btn {
@@ -173,52 +360,114 @@
   color: #3b82f6;
   font-weight: bold;
   cursor: pointer;
+  font-size: 14px;
 }
 
 .profile-skill-remove-btn:hover {
-  color: #1d4ed8;
+  color: #ef4444;
 }
 
 /* Projects */
 .profile-project-item {
-  margin-bottom: 16px;
-}
-
-.profile-project-item:last-child {
-  margin-bottom: 0;
+  margin-bottom: 12px;
 }
 
 .profile-project-title {
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 700;
   color: #0f172a;
   margin-bottom: 4px;
 }
 
-.profile-project-desc {
-  font-size: 13px;
-  color: #475569;
-  line-height: 1.6;
+html[data-theme='dark'] .profile-project-title {
+  color: #f8fafc;
 }
 
-/* Career Goals */
+.profile-project-desc {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0;
+}
+
+html[data-theme='dark'] .profile-project-desc {
+  color: #94a3b8;
+}
+
+/* Goals */
 .profile-goal-wrap {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .profile-goal-section-title {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
   color: #94a3b8;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .profile-goal-text {
   font-size: 13px;
-  color: #475569;
-  line-height: 1.6;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0;
+}
+
+html[data-theme='dark'] .profile-goal-text {
+  color: #94a3b8;
+}
+
+/* ── Interactive Row hover actions ── */
+.profile-cv-item-block {
+  position: relative;
+  padding: 6px 0;
+}
+
+.profile-cv-delete-action {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-cv-item-block:hover .profile-cv-delete-action {
+  opacity: 1;
+}
+
+.profile-cv-delete-action:hover {
+  color: #ef4444 !important;
+}
+
+/* Responsive Overrides for CV Sheet */
+@media (max-width: 768px) {
+  .profile-cv-sheet {
+    padding: 24px 20px;
+    border-radius: 8px;
+  }
+  .profile-cv-header {
+    gap: 16px;
+  }
+  .profile-cv-avatar-wrap {
+    width: 70px;
+    height: 70px;
+  }
+  .profile-cv-avatar-fallback {
+    font-size: 24px;
+  }
+  .profile-cv-name {
+    font-size: 20px;
+  }
+  .profile-cv-contact-row {
+    font-size: 12px;
+    gap: 6px 12px;
+  }
 }

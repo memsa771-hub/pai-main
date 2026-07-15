@@ -1,157 +1,298 @@
 import io
 import json
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn, nsdecls
+from docx.oxml import parse_xml
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from reportlab.lib.units import inch
 
-# Helper for Word DOCX creation
+
+def _parse_achievements(work_entry) -> list:
+    """Safely parse achievements from a work experience entry."""
+    achievements = []
+    try:
+        if hasattr(work_entry, 'achievements') and work_entry.achievements:
+            achievements = json.loads(work_entry.achievements)
+    except:
+        pass
+    return achievements
+
+
+def _parse_json_list(user_data, field_name) -> list:
+    """Safely parse a JSON list field from user data."""
+    result = []
+    try:
+        val = getattr(user_data, field_name, None)
+        if val:
+            result = json.loads(val)
+    except:
+        pass
+    return result
+
+
+def _get_date_range(entry) -> str:
+    """Build a clean date range string from an entry."""
+    if hasattr(entry, 'start_date') and entry.start_date:
+        end = getattr(entry, 'end_date', None) or "Present"
+        return f"{entry.start_date} — {end}"
+    if hasattr(entry, 'period') and entry.period:
+        return entry.period
+    if hasattr(entry, 'graduation_year') and entry.graduation_year:
+        return entry.graduation_year
+    return ""
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DOCX GENERATION — Premium Executive Layout
+# ──────────────────────────────────────────────────────────────────────────────
+
 def generate_docx_resume(user_data, template="ats") -> io.BytesIO:
     doc = Document()
     
-    # Set Margins
-    sections = doc.sections
-    for section in sections:
-        section.top_margin = Inches(0.8)
-        section.bottom_margin = Inches(0.8)
-        section.left_margin = Inches(0.8)
-        section.right_margin = Inches(0.8)
+    # Page setup
+    for section in doc.sections:
+        section.top_margin = Inches(0.7)
+        section.bottom_margin = Inches(0.7)
+        section.left_margin = Inches(0.75)
+        section.right_margin = Inches(0.75)
 
-    # Styles
+    # Typography config per template
+    is_modern = template in ("modern", "europass")
+    heading_font = "Calibri" if is_modern else "Georgia"
+    body_font = "Calibri" if is_modern else "Georgia"
+    name_color = RGBColor(23, 37, 84) if is_modern else RGBColor(0, 0, 0)
+    heading_color = RGBColor(23, 37, 84) if is_modern else RGBColor(30, 41, 59)
+    body_color = RGBColor(51, 65, 85)
+    muted_color = RGBColor(100, 116, 139)
+    divider_color = RGBColor(203, 213, 225) if is_modern else RGBColor(148, 163, 184)
+
+    # Normal style baseline
     style = doc.styles['Normal']
-    font = style.font
-    if template == "ats":
-        font.name = 'Times New Roman'
-        font.size = Pt(11)
-        font.color.rgb = RGBColor(0, 0, 0)
-    else: # modern or europass or academic
-        font.name = 'Arial'
-        font.size = Pt(10.5)
-        font.color.rgb = RGBColor(51, 65, 85) # Slate 700
+    style.font.name = body_font
+    style.font.size = Pt(10)
+    style.font.color.rgb = body_color
+    style.paragraph_format.space_after = Pt(2)
+    style.paragraph_format.line_spacing = 1.15
 
-    # Header Section
-    title_p = doc.add_paragraph()
-    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER if template in ["ats", "modern"] else WD_ALIGN_PARAGRAPH.LEFT
-    run_name = title_p.add_run(user_data.full_name + "\n")
-    run_name.bold = True
-    run_name.font.size = Pt(18 if template == "modern" else 16)
-    if template == "modern":
-        run_name.font.color.rgb = RGBColor(0, 45, 156) # Deep Blue
+    # ── NAME ──
+    name_p = doc.add_paragraph()
+    name_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    name_p.paragraph_format.space_after = Pt(2)
+    name_run = name_p.add_run(user_data.full_name.upper())
+    name_run.bold = True
+    name_run.font.size = Pt(20)
+    name_run.font.name = heading_font
+    name_run.font.color.rgb = name_color
+    name_run.font.letter_spacing = Pt(2.5)
 
-    info_p = doc.add_paragraph()
-    info_p.alignment = WD_ALIGN_PARAGRAPH.CENTER if template in ["ats", "modern"] else WD_ALIGN_PARAGRAPH.LEFT
-    
-    contact_details = []
-    if user_data.email: contact_details.append(user_data.email)
-    if user_data.phone: contact_details.append(user_data.phone)
-    if user_data.city or user_data.country:
-        loc = ", ".join(filter(None, [user_data.city, user_data.country]))
-        contact_details.append(loc)
-    if user_data.linkedin: contact_details.append(user_data.linkedin)
-    
-    info_run = info_p.add_run(" | ".join(contact_details))
-    info_run.font.size = Pt(9.5)
+    # ── CONTACT LINE ──
+    contact_parts = []
+    if user_data.email:
+        contact_parts.append(user_data.email)
+    if user_data.phone:
+        contact_parts.append(user_data.phone)
+    loc = ", ".join(filter(None, [
+        getattr(user_data, 'city', None),
+        getattr(user_data, 'country', None)
+    ]))
+    if loc:
+        contact_parts.append(loc)
+    if user_data.linkedin:
+        contact_parts.append(user_data.linkedin)
 
-    # Divider line
-    if template == "modern":
-        p_divider = doc.add_paragraph()
-        p_run = p_divider.add_run("―" * 60)
-        p_run.font.color.rgb = RGBColor(226, 232, 240)
-        p_divider.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if contact_parts:
+        contact_p = doc.add_paragraph()
+        contact_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        contact_p.paragraph_format.space_after = Pt(8)
+        contact_run = contact_p.add_run("  ·  ".join(contact_parts))
+        contact_run.font.size = Pt(9)
+        contact_run.font.name = body_font
+        contact_run.font.color.rgb = muted_color
 
-    # Add Heading Function
+    # ── SECTION HEADING HELPER ──
     def add_section_heading(text):
         p = doc.add_paragraph()
-        p.paragraph_format.space_before = Pt(12)
-        p.paragraph_format.space_after = Pt(4)
-        run = p.add_run(text)
+        p.paragraph_format.space_before = Pt(14)
+        p.paragraph_format.space_after = Pt(0)
+        run = p.add_run(text.upper())
         run.bold = True
-        run.font.size = Pt(13)
-        if template == "modern":
-            run.font.color.rgb = RGBColor(0, 45, 156)
-            # Add bottom border via horizontal line
-            p_line = doc.add_paragraph()
-            p_line.paragraph_format.space_before = Pt(0)
-            p_line.paragraph_format.space_after = Pt(4)
-            line_run = p_line.add_run("―" * 60)
-            line_run.font.size = Pt(6)
-            line_run.font.color.rgb = RGBColor(0, 45, 156)
+        run.font.size = Pt(10)
+        run.font.name = heading_font
+        run.font.color.rgb = heading_color
+        run.font.letter_spacing = Pt(1.5)
 
-    # Summary
+        # Thin horizontal rule
+        hr_p = doc.add_paragraph()
+        hr_p.paragraph_format.space_before = Pt(2)
+        hr_p.paragraph_format.space_after = Pt(6)
+        pBdr = parse_xml(
+            f'<w:pBdr {nsdecls("w")}>'
+            f'  <w:bottom w:val="single" w:sz="4" w:space="1" w:color="{divider_color.hex()}"/>'
+            f'</w:pBdr>'
+        )
+        hr_p._p.get_or_add_pPr().append(pBdr)
+
+    # ── PROFESSIONAL SUMMARY ──
     if user_data.summary:
         add_section_heading("Professional Summary")
-        doc.add_paragraph(user_data.summary)
+        summary_p = doc.add_paragraph()
+        summary_p.paragraph_format.space_after = Pt(4)
+        summary_run = summary_p.add_run(user_data.summary)
+        summary_run.font.size = Pt(10)
+        summary_run.font.color.rgb = body_color
+        summary_run.italic = True
 
-    # Work Experience
+    # ── WORK EXPERIENCE ──
     if user_data.work_experience:
-        add_section_heading("Work Experience")
+        add_section_heading("Professional Experience")
         for exp in user_data.work_experience:
-            p = doc.add_paragraph()
-            p.paragraph_format.space_after = Pt(2)
-            role_run = p.add_run(f"{exp.role} ")
+            # Role + Company line
+            role_p = doc.add_paragraph()
+            role_p.paragraph_format.space_before = Pt(6)
+            role_p.paragraph_format.space_after = Pt(1)
+            role_run = role_p.add_run(exp.role)
             role_run.bold = True
-            p.add_run(f"at {exp.company}")
-            
-            p_date = doc.add_paragraph()
-            p_date.paragraph_format.space_after = Pt(2)
-            date_run = p_date.add_run(exp.period or "")
-            date_run.italic = True
-            
-            if exp.description:
-                # Add descriptions by breaking into bullet points
+            role_run.font.size = Pt(10.5)
+            role_run.font.color.rgb = RGBColor(15, 23, 42)
+            role_p.add_run("  —  ").font.color.rgb = muted_color
+            company_run = role_p.add_run(exp.company)
+            company_run.font.color.rgb = body_color
+
+            # Date range
+            date_str = _get_date_range(exp)
+            if date_str:
+                date_p = doc.add_paragraph()
+                date_p.paragraph_format.space_after = Pt(2)
+                date_run = date_p.add_run(date_str)
+                date_run.italic = True
+                date_run.font.size = Pt(9)
+                date_run.font.color.rgb = muted_color
+
+            # Achievements as bullet points
+            achievements = _parse_achievements(exp)
+            if achievements:
+                for ach in achievements:
+                    bullet_p = doc.add_paragraph()
+                    bullet_p.paragraph_format.left_indent = Inches(0.25)
+                    bullet_p.paragraph_format.space_after = Pt(1)
+                    bullet_run = bullet_p.add_run(f"▸  {ach}")
+                    bullet_run.font.size = Pt(9.5)
+                    bullet_run.font.color.rgb = body_color
+            elif exp.description:
                 desc_p = doc.add_paragraph()
                 desc_p.paragraph_format.left_indent = Inches(0.25)
-                desc_p.add_run(exp.description)
+                desc_p.paragraph_format.space_after = Pt(2)
+                desc_run = desc_p.add_run(exp.description)
+                desc_run.font.size = Pt(9.5)
+                desc_run.font.color.rgb = body_color
 
-    # Education
+    # ── EDUCATION ──
     if user_data.education:
         add_section_heading("Education")
         for edu in user_data.education:
-            p = doc.add_paragraph()
-            p.paragraph_format.space_after = Pt(2)
-            deg_run = p.add_run(f"{edu.degree} ")
-            deg_run.bold = True
-            p.add_run(f"― {edu.school}")
-            
-            p_details = doc.add_paragraph()
-            p_details.paragraph_format.space_after = Pt(2)
-            p_details.add_run(f"Period: {edu.period or 'N/A'} | GPA: {edu.gpa or 'N/A'}")
-            
-            if edu.details:
-                details_p = doc.add_paragraph()
-                details_p.paragraph_format.left_indent = Inches(0.25)
-                details_run = details_p.add_run(edu.details)
-                details_run.font.size = Pt(9.5)
+            # Degree + School
+            edu_p = doc.add_paragraph()
+            edu_p.paragraph_format.space_before = Pt(4)
+            edu_p.paragraph_format.space_after = Pt(1)
 
-    # Projects
+            degree_text = edu.degree
+            if hasattr(edu, 'major') and edu.major:
+                degree_text += f" in {edu.major}"
+
+            deg_run = edu_p.add_run(degree_text)
+            deg_run.bold = True
+            deg_run.font.size = Pt(10.5)
+            deg_run.font.color.rgb = RGBColor(15, 23, 42)
+
+            edu_p.add_run("  —  ").font.color.rgb = muted_color
+            school_run = edu_p.add_run(edu.school)
+            school_run.font.color.rgb = body_color
+
+            # Period / Graduation Year + GPA
+            details_parts = []
+            date_str = _get_date_range(edu)
+            if date_str:
+                details_parts.append(date_str)
+            if edu.gpa:
+                details_parts.append(f"GPA: {edu.gpa}")
+
+            if details_parts:
+                detail_p = doc.add_paragraph()
+                detail_p.paragraph_format.space_after = Pt(2)
+                detail_run = detail_p.add_run("  ·  ".join(details_parts))
+                detail_run.italic = True
+                detail_run.font.size = Pt(9)
+                detail_run.font.color.rgb = muted_color
+
+            if hasattr(edu, 'details') and edu.details:
+                det_p = doc.add_paragraph()
+                det_p.paragraph_format.left_indent = Inches(0.25)
+                det_p.paragraph_format.space_after = Pt(2)
+                det_run = det_p.add_run(edu.details)
+                det_run.font.size = Pt(9.5)
+                det_run.font.color.rgb = body_color
+
+    # ── PROJECTS & CERTIFICATIONS ──
     if user_data.projects:
-        add_section_heading("Projects")
+        add_section_heading("Projects & Certifications")
         for proj in user_data.projects:
-            p = doc.add_paragraph()
-            p.paragraph_format.space_after = Pt(2)
-            proj_run = p.add_run(proj.name)
+            proj_p = doc.add_paragraph()
+            proj_p.paragraph_format.space_before = Pt(4)
+            proj_p.paragraph_format.space_after = Pt(1)
+            proj_run = proj_p.add_run(proj.name)
             proj_run.bold = True
-            
+            proj_run.font.size = Pt(10)
+            proj_run.font.color.rgb = RGBColor(15, 23, 42)
+
             if proj.description:
                 desc_p = doc.add_paragraph()
                 desc_p.paragraph_format.left_indent = Inches(0.25)
-                desc_p.add_run(proj.description)
+                desc_p.paragraph_format.space_after = Pt(1)
+                desc_run = desc_p.add_run(proj.description)
+                desc_run.font.size = Pt(9.5)
+                desc_run.font.color.rgb = body_color
 
-    # Skills
-    skills_list = []
-    try:
-        if user_data.skills:
-            skills_list = json.loads(user_data.skills)
-    except:
-        if isinstance(user_data.skills, str):
-            skills_list = [s.strip() for s in user_data.skills.split(",") if s.strip()]
+            if hasattr(proj, 'link_or_credential') and proj.link_or_credential:
+                link_p = doc.add_paragraph()
+                link_p.paragraph_format.left_indent = Inches(0.25)
+                link_p.paragraph_format.space_after = Pt(2)
+                link_run = link_p.add_run(proj.link_or_credential)
+                link_run.font.size = Pt(8.5)
+                link_run.font.color.rgb = RGBColor(37, 99, 235)
+                link_run.italic = True
 
-    if skills_list:
-        add_section_heading("Skills & Expertise")
-        doc.add_paragraph(", ".join(skills_list))
+    # ── SKILLS ──
+    skills_list = _parse_json_list(user_data, 'skills')
+    languages_list = _parse_json_list(user_data, 'languages')
+
+    if skills_list or languages_list:
+        add_section_heading("Skills & Languages")
+        if skills_list:
+            tech_p = doc.add_paragraph()
+            tech_p.paragraph_format.space_after = Pt(2)
+            label_run = tech_p.add_run("Technical:  ")
+            label_run.bold = True
+            label_run.font.size = Pt(9.5)
+            label_run.font.color.rgb = body_color
+            val_run = tech_p.add_run("  ·  ".join(skills_list))
+            val_run.font.size = Pt(9.5)
+            val_run.font.color.rgb = body_color
+
+        if languages_list:
+            lang_p = doc.add_paragraph()
+            lang_p.paragraph_format.space_after = Pt(2)
+            label_run = lang_p.add_run("Languages:  ")
+            label_run.bold = True
+            label_run.font.size = Pt(9.5)
+            label_run.font.color.rgb = body_color
+            val_run = lang_p.add_run("  ·  ".join(languages_list))
+            val_run.font.size = Pt(9.5)
+            val_run.font.color.rgb = body_color
 
     file_stream = io.BytesIO()
     doc.save(file_stream)
@@ -159,194 +300,276 @@ def generate_docx_resume(user_data, template="ats") -> io.BytesIO:
     return file_stream
 
 
-# Helper for PDF creation using reportlab
+# ──────────────────────────────────────────────────────────────────────────────
+# PDF GENERATION — Premium Executive Layout
+# ──────────────────────────────────────────────────────────────────────────────
+
 def generate_pdf_resume(user_data, template="ats") -> io.BytesIO:
     buffer = io.BytesIO()
+
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        rightMargin=54,
-        leftMargin=54,
-        topMargin=54,
-        bottomMargin=54
-    )
-    
-    styles = getSampleStyleSheet()
-    
-    # Custom colors
-    primary_color = colors.HexColor("#002D9C") if template == "modern" else colors.HexColor("#000000")
-    text_color = colors.HexColor("#334155") if template != "ats" else colors.HexColor("#000000")
-    line_color = colors.HexColor("#CBD5E1") if template != "ats" else colors.HexColor("#000000")
-    
-    # Define typography styles
-    title_style = ParagraphStyle(
-        'DocTitle',
-        parent=styles['Heading1'],
-        fontName='Helvetica-Bold' if template != "ats" else 'Times-Bold',
-        fontSize=20,
-        leading=24,
-        alignment=1 if template in ["ats", "modern"] else 0, # Center or Left
-        textColor=primary_color
-    )
-    
-    subtitle_style = ParagraphStyle(
-        'DocSubtitle',
-        parent=styles['Normal'],
-        fontName='Helvetica' if template != "ats" else 'Times-Roman',
-        fontSize=10,
-        leading=14,
-        alignment=1 if template in ["ats", "modern"] else 0,
-        textColor=text_color
-    )
-    
-    heading_style = ParagraphStyle(
-        'SectionHeading',
-        parent=styles['Heading2'],
-        fontName='Helvetica-Bold' if template != "ats" else 'Times-Bold',
-        fontSize=12,
-        leading=16,
-        spaceBefore=14,
-        spaceAfter=6,
-        textColor=primary_color
-    )
-    
-    body_style = ParagraphStyle(
-        'BodyText',
-        parent=styles['Normal'],
-        fontName='Helvetica' if template != "ats" else 'Times-Roman',
-        fontSize=10,
-        leading=14,
-        textColor=text_color
+        rightMargin=48,
+        leftMargin=48,
+        topMargin=48,
+        bottomMargin=48
     )
 
-    bold_body_style = ParagraphStyle(
-        'BoldBodyText',
-        parent=body_style,
-        fontName='Helvetica-Bold' if template != "ats" else 'Times-Bold'
+    is_modern = template in ("modern", "europass")
+
+    # ── COLOR PALETTE ──
+    dark_navy = colors.HexColor("#172554")
+    slate_700 = colors.HexColor("#334155")
+    slate_500 = colors.HexColor("#64748b")
+    slate_300 = colors.HexColor("#cbd5e1")
+    accent_blue = colors.HexColor("#1e40af") if is_modern else dark_navy
+    body_text_color = slate_700 if is_modern else colors.HexColor("#1e293b")
+
+    # ── TYPOGRAPHY STYLES ──
+    base_font = "Helvetica" if is_modern else "Times-Roman"
+    bold_font = "Helvetica-Bold" if is_modern else "Times-Bold"
+    italic_font = "Helvetica-Oblique" if is_modern else "Times-Italic"
+
+    name_style = ParagraphStyle(
+        'CVName',
+        fontName=bold_font,
+        fontSize=22,
+        leading=26,
+        alignment=1,
+        textColor=dark_navy,
+        spaceAfter=2,
+        tracking=200,
     )
-    
-    italic_body_style = ParagraphStyle(
-        'ItalicBodyText',
-        parent=body_style,
-        fontName='Helvetica-Oblique' if template != "ats" else 'Times-Italic'
+
+    contact_style = ParagraphStyle(
+        'CVContact',
+        fontName=base_font,
+        fontSize=9,
+        leading=13,
+        alignment=1,
+        textColor=slate_500,
+        spaceAfter=10,
+    )
+
+    section_heading_style = ParagraphStyle(
+        'CVSectionHeading',
+        fontName=bold_font,
+        fontSize=10,
+        leading=14,
+        textColor=accent_blue,
+        spaceBefore=16,
+        spaceAfter=2,
+        tracking=150,
+    )
+
+    body_style = ParagraphStyle(
+        'CVBody',
+        fontName=base_font,
+        fontSize=10,
+        leading=14,
+        textColor=body_text_color,
+    )
+
+    summary_style = ParagraphStyle(
+        'CVSummary',
+        fontName=italic_font,
+        fontSize=10,
+        leading=14.5,
+        textColor=body_text_color,
+        spaceAfter=4,
+    )
+
+    role_style = ParagraphStyle(
+        'CVRole',
+        fontName=base_font,
+        fontSize=10,
+        leading=14,
+        textColor=body_text_color,
+        spaceBefore=6,
+        spaceAfter=1,
+    )
+
+    date_style = ParagraphStyle(
+        'CVDate',
+        fontName=italic_font,
+        fontSize=9,
+        leading=12,
+        textColor=slate_500,
+        alignment=2,
+    )
+
+    bullet_style = ParagraphStyle(
+        'CVBullet',
+        fontName=base_font,
+        fontSize=9.5,
+        leading=13.5,
+        textColor=body_text_color,
+        leftIndent=14,
+        spaceAfter=1,
+    )
+
+    link_style = ParagraphStyle(
+        'CVLink',
+        fontName=italic_font,
+        fontSize=8.5,
+        leading=12,
+        textColor=colors.HexColor("#2563eb"),
+        leftIndent=14,
+        spaceAfter=2,
+    )
+
+    label_style = ParagraphStyle(
+        'CVLabel',
+        fontName=bold_font,
+        fontSize=9.5,
+        leading=13,
+        textColor=body_text_color,
     )
 
     story = []
-    
-    # Name
-    story.append(Paragraph(user_data.full_name, title_style))
-    story.append(Spacer(1, 4))
-    
-    # Contact Info
-    contact_details = []
-    if user_data.email: contact_details.append(user_data.email)
-    if user_data.phone: contact_details.append(user_data.phone)
-    if user_data.city or user_data.country:
-        loc = ", ".join(filter(None, [user_data.city, user_data.country]))
-        contact_details.append(loc)
-    if user_data.linkedin: contact_details.append(user_data.linkedin)
-    
-    story.append(Paragraph(" | ".join(contact_details), subtitle_style))
-    story.append(Spacer(1, 10))
 
-    # Divider line
-    divider_table = Table([[""]], colWidths=[504])
-    divider_table.setStyle(TableStyle([
-        ('LINEABOVE', (0,0), (-1,-1), 1.5 if template == "modern" else 0.5, primary_color if template == "modern" else line_color),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-        ('TOPPADDING', (0,0), (-1,-1), 0),
+    # ── NAME ──
+    story.append(Paragraph(user_data.full_name.upper(), name_style))
+    story.append(Spacer(1, 2))
+
+    # ── CONTACT INFO ──
+    contact_parts = []
+    if user_data.email:
+        contact_parts.append(user_data.email)
+    if user_data.phone:
+        contact_parts.append(user_data.phone)
+    loc = ", ".join(filter(None, [
+        getattr(user_data, 'city', None),
+        getattr(user_data, 'country', None)
     ]))
-    story.append(divider_table)
-    story.append(Spacer(1, 10))
+    if loc:
+        contact_parts.append(loc)
+    if user_data.linkedin:
+        contact_parts.append(user_data.linkedin)
 
-    # Add section title wrapper
-    def append_section_title(title_text):
-        story.append(Paragraph(title_text, heading_style))
-        if template == "modern":
-            # Add secondary underline
-            ul_table = Table([[""]], colWidths=[504])
-            ul_table.setStyle(TableStyle([
-                ('LINEABOVE', (0,0), (-1,-1), 1, primary_color),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-                ('TOPPADDING', (0,0), (-1,-1), 0),
+    if contact_parts:
+        story.append(Paragraph("  ·  ".join(contact_parts), contact_style))
+
+    # ── DIVIDER ──
+    story.append(HRFlowable(
+        width="100%", thickness=0.8,
+        color=accent_blue if is_modern else slate_300,
+        spaceBefore=2, spaceAfter=6
+    ))
+
+    # ── SECTION HELPER ──
+    def add_section(title):
+        story.append(Paragraph(title.upper(), section_heading_style))
+        story.append(HRFlowable(
+            width="100%", thickness=0.5,
+            color=slate_300,
+            spaceBefore=1, spaceAfter=6
+        ))
+
+    usable_width = letter[0] - 96  # 48pt margins each side
+
+    # ── PROFESSIONAL SUMMARY ──
+    if user_data.summary:
+        add_section("Professional Summary")
+        story.append(Paragraph(user_data.summary, summary_style))
+        story.append(Spacer(1, 4))
+
+    # ── WORK EXPERIENCE ──
+    if user_data.work_experience:
+        add_section("Professional Experience")
+        for exp in user_data.work_experience:
+            # Role / Company on left — Date on right
+            left_text = f"<b>{exp.role}</b>  —  {exp.company}"
+            date_text = f"<i>{_get_date_range(exp)}</i>"
+
+            left_p = Paragraph(left_text, role_style)
+            right_p = Paragraph(date_text, date_style)
+
+            header_table = Table([[left_p, right_p]], colWidths=[usable_width * 0.68, usable_width * 0.32])
+            header_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
             ]))
-            story.append(ul_table)
+            story.append(header_table)
+
+            # Achievement bullets
+            achievements = _parse_achievements(exp)
+            if achievements:
+                for ach in achievements:
+                    story.append(Paragraph(f"▸  {ach}", bullet_style))
+            elif exp.description:
+                story.append(Paragraph(exp.description, bullet_style))
+
+            story.append(Spacer(1, 6))
+
+    # ── EDUCATION ──
+    if user_data.education:
+        add_section("Education")
+        for edu in user_data.education:
+            degree_text = edu.degree
+            if hasattr(edu, 'major') and edu.major:
+                degree_text += f" in {edu.major}"
+
+            left_text = f"<b>{degree_text}</b>  —  {edu.school}"
+            date_text = f"<i>{_get_date_range(edu)}</i>"
+
+            left_p = Paragraph(left_text, role_style)
+            right_p = Paragraph(date_text, date_style)
+
+            header_table = Table([[left_p, right_p]], colWidths=[usable_width * 0.68, usable_width * 0.32])
+            header_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ]))
+            story.append(header_table)
+
+            # GPA + details
+            details_parts = []
+            if edu.gpa:
+                details_parts.append(f"GPA: {edu.gpa}")
+            if hasattr(edu, 'details') and edu.details:
+                details_parts.append(edu.details)
+            if details_parts:
+                story.append(Paragraph("  ·  ".join(details_parts), bullet_style))
+
+            story.append(Spacer(1, 6))
+
+    # ── PROJECTS & CERTIFICATIONS ──
+    if user_data.projects:
+        add_section("Projects & Certifications")
+        for proj in user_data.projects:
+            story.append(Paragraph(f"<b>{proj.name}</b>", role_style))
+            if proj.description:
+                story.append(Paragraph(proj.description, bullet_style))
+            if hasattr(proj, 'link_or_credential') and proj.link_or_credential:
+                story.append(Paragraph(proj.link_or_credential, link_style))
             story.append(Spacer(1, 4))
 
-    # 1. Summary
-    if user_data.summary:
-        append_section_title("Professional Summary")
-        story.append(Paragraph(user_data.summary, body_style))
-        story.append(Spacer(1, 8))
+    # ── SKILLS & LANGUAGES ──
+    skills_list = _parse_json_list(user_data, 'skills')
+    languages_list = _parse_json_list(user_data, 'languages')
 
-    # 2. Experience
-    if user_data.work_experience:
-        append_section_title("Work Experience")
-        for exp in user_data.work_experience:
-            # Header table (Role / Company on left, Date on right)
-            left_p = Paragraph(f"<b>{exp.role}</b> at {exp.company}", body_style)
-            right_p = Paragraph(f"<i>{exp.period or ''}</i>", ParagraphStyle('RightItalic', parent=italic_body_style, alignment=2))
-            
-            exp_table = Table([[left_p, right_p]], colWidths=[350, 154])
-            exp_table.setStyle(TableStyle([
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('LEFTPADDING', (0,0), (-1,-1), 0),
-                ('RIGHTPADDING', (0,0), (-1,-1), 0),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-            ]))
-            story.append(exp_table)
-            
-            if exp.description:
-                story.append(Paragraph(exp.description, ParagraphStyle('BulletText', parent=body_style, leftIndent=12)))
-            story.append(Spacer(1, 6))
+    if skills_list or languages_list:
+        add_section("Skills & Languages")
+        if skills_list:
+            story.append(Paragraph(
+                f"<b>Technical:</b>  {'  ·  '.join(skills_list)}",
+                ParagraphStyle('SkillLine', parent=body_style, fontSize=9.5, leading=13, spaceAfter=3)
+            ))
+        if languages_list:
+            story.append(Paragraph(
+                f"<b>Languages:</b>  {'  ·  '.join(languages_list)}",
+                ParagraphStyle('LangLine', parent=body_style, fontSize=9.5, leading=13, spaceAfter=3)
+            ))
 
-    # 3. Education
-    if user_data.education:
-        append_section_title("Education")
-        for edu in user_data.education:
-            left_p = Paragraph(f"<b>{edu.degree}</b> ― {edu.school}", body_style)
-            right_p = Paragraph(f"<i>{edu.period or ''}</i>", ParagraphStyle('RightItalic', parent=italic_body_style, alignment=2))
-            
-            edu_table = Table([[left_p, right_p]], colWidths=[350, 154])
-            edu_table.setStyle(TableStyle([
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('LEFTPADDING', (0,0), (-1,-1), 0),
-                ('RIGHTPADDING', (0,0), (-1,-1), 0),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-            ]))
-            story.append(edu_table)
-            
-            gpa_text = f"GPA: {edu.gpa}" if edu.gpa else ""
-            details_text = f" • {edu.details}" if edu.details else ""
-            if gpa_text or details_text:
-                story.append(Paragraph(f"{gpa_text}{details_text}", ParagraphStyle('EduDetails', parent=body_style, leftIndent=12)))
-            story.append(Spacer(1, 6))
-
-    # 4. Projects
-    if user_data.projects:
-        append_section_title("Projects")
-        for proj in user_data.projects:
-            story.append(Paragraph(f"<b>{proj.name}</b>", body_style))
-            if proj.description:
-                story.append(Paragraph(proj.description, ParagraphStyle('ProjBullet', parent=body_style, leftIndent=12)))
-            story.append(Spacer(1, 6))
-
-    # 5. Skills
-    skills_list = []
-    try:
-        if user_data.skills:
-            skills_list = json.loads(user_data.skills)
-    except:
-        if isinstance(user_data.skills, str):
-            skills_list = [s.strip() for s in user_data.skills.split(",") if s.strip()]
-
-    if skills_list:
-        append_section_title("Skills & Expertise")
-        story.append(Paragraph(", ".join(skills_list), body_style))
-
-    # Build document
+    # ── BUILD ──
     doc.build(story)
     buffer.seek(0)
     return buffer

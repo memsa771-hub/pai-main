@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { Send, User, Sparkles } from 'lucide-react';
+import { Send, User, Sparkles, Paperclip, Loader2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import './chat.css';
 
@@ -19,20 +19,78 @@ interface ChatSession {
   messages: ChatMessage[];
 }
 
-
-
-
 export default function ChatConsultantPage() {
-  const { profile, logout, apiFetch } = useApp();
+  const { profile, logout, apiFetch, uploadDocument, trackedUnis } = useApp();
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [suggestedOptions, setSuggestedOptions] = useState<string[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Document uploading state
+  const [isDocUploading, setIsDocUploading] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [docType, setDocType] = useState('Resume');
+  const [docUni, setDocUni] = useState('Stanford University');
+  const [docName, setDocName] = useState('');
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setUploadFile(file);
+      const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+      setDocName(baseName);
+      if (trackedUnis && trackedUnis.length > 0) {
+        setDocUni(trackedUnis[0].name);
+      } else {
+        setDocUni('Stanford University');
+      }
+      setIsUploadModalOpen(true);
+    }
+  };
+
+  const handleUploadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile || !docName) return;
+
+    setIsDocUploading(true);
+    setIsUploadModalOpen(false);
+
+    try {
+      await uploadDocument(docUni, docName, docType, uploadFile);
+      // Wait a brief moment to let database changes propagate on backend
+      await new Promise(resolve => setTimeout(resolve, 800));
+      // Send chat message automatically to sync user prompt with new vault information
+      await handleSend(`I have successfully uploaded my ${docType} document: ${docName}.`);
+    } catch(err) {
+      console.error(err);
+    } finally {
+      setIsDocUploading(false);
+      setUploadFile(null);
+      setDocName('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Static greeting presets
+  const greetingPresets = [
+    "Review my SOP strategy",
+    "Analyze my profile gaps",
+    "Help me plan my GRE prep",
+    "What universities should I target?",
+    "Build my study abroad roadmap"
+  ];
 
   const userName = profile.name ? profile.name.split(' ')[0] : 'Student';
 
-  // Load chat sessions from backend on mount
+  // Load chat sessions from backend on mount and select the latest one automatically
   useEffect(() => {
     const loadSessions = async () => {
       try {
@@ -42,9 +100,14 @@ export default function ChatConsultantPage() {
           const mapped: ChatSession[] = data.map((s: any) => ({
             id: s.id,
             title: s.title,
-            messages: [] // Messages are loaded on session select
+            messages: []
           }));
           setSessions(mapped);
+          
+          // Auto-select the most recent session to preserve conversation history
+          if (mapped.length > 0) {
+            setActiveSessionId(mapped[0].id);
+          }
         }
       } catch (e) {
         console.error('Failed to load chat sessions', e);
@@ -86,8 +149,20 @@ export default function ChatConsultantPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
+  useEffect(() => {
+    if (!isTyping && !isDocUploading) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isTyping, isDocUploading]);
+
   const handleSend = async (textToSend: string) => {
     if (!textToSend.trim()) return;
+
+    // Clear dynamic suggestions when user sends a message
+    setSuggestedOptions([]);
 
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -97,9 +172,10 @@ export default function ChatConsultantPage() {
     };
 
     // Optimistically add user message to UI
-    if (activeSessionId) {
+    let currentSessionId = activeSessionId;
+    if (currentSessionId) {
       setSessions(prev => prev.map(s => {
-        if (s.id === activeSessionId) {
+        if (s.id === currentSessionId) {
           return { ...s, messages: [...s.messages, userMsg] };
         }
         return s;
@@ -110,6 +186,7 @@ export default function ChatConsultantPage() {
       const title = textToSend.length > 22 ? `${textToSend.slice(0, 20)}...` : textToSend;
       setSessions(prev => [...prev, { id: tempId, title, messages: [userMsg] }]);
       setActiveSessionId(tempId);
+      currentSessionId = tempId;
     }
 
     setInput('');
@@ -121,7 +198,7 @@ export default function ChatConsultantPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: textToSend,
-          session_id: activeSessionId && !activeSessionId.startsWith('temp-') ? activeSessionId : null
+          session_id: currentSessionId && !currentSessionId.startsWith('temp-') ? currentSessionId : null
         })
       });
 
@@ -135,12 +212,11 @@ export default function ChatConsultantPage() {
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
 
-        // If this was a new session, update the session id to the real one from backend
         const realSessionId = data.session_id;
         
         setSessions(prev => {
           return prev.map(s => {
-            if (s.id === activeSessionId || (s.id.startsWith('temp-') && !activeSessionId)) {
+            if (s.id === currentSessionId) {
               return {
                 ...s,
                 id: realSessionId || s.id,
@@ -155,6 +231,14 @@ export default function ChatConsultantPage() {
         if (realSessionId) {
           setActiveSessionId(realSessionId);
         }
+
+        // Handle dynamic quick-reply suggestions from backend
+        if (data.requires_profile_data && data.suggested_options && data.suggested_options.length > 0) {
+          setSuggestedOptions(data.suggested_options);
+        } else {
+          setSuggestedOptions([]);
+        }
+
       } else if (res.status === 401 || res.status === 403) {
         logout();
         window.location.href = '/#login';
@@ -177,7 +261,7 @@ export default function ChatConsultantPage() {
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
         setSessions(prev => prev.map(s => {
-          if (s.id === activeSessionId || s.id.startsWith('temp-')) {
+          if (s.id === currentSessionId) {
             return { ...s, messages: [...s.messages, aiMsg] };
           }
           return s;
@@ -192,7 +276,7 @@ export default function ChatConsultantPage() {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setSessions(prev => prev.map(s => {
-        if (s.id === activeSessionId || s.id.startsWith('temp-')) {
+        if (s.id === currentSessionId) {
           return { ...s, messages: [...s.messages, aiMsg] };
         }
         return s;
@@ -202,19 +286,6 @@ export default function ChatConsultantPage() {
     }
   };
 
-  const handleNewChat = () => {
-    setActiveSessionId(null);
-  };
-
-  const preSets = [
-    "Review my SOP strategy",
-    "Analyze my profile gaps",
-    "Help me plan my GRE prep",
-    "What universities should I target?",
-    "Build my study abroad roadmap"
-  ];
-
-  // Animated Mascot Avatar SVG
   const renderMascotAvatar = () => (
     <div className="chat-avatar-mascot">
       <svg width="100%" height="100%" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -249,7 +320,7 @@ export default function ChatConsultantPage() {
   const hasMessages = messages.length > 0;
   const layoutIdVal = "chat-input-form-shared";
 
-  const renderInputForm = (formClass: string) => (
+  const renderInputForm = () => (
     <motion.form 
       layoutId={layoutIdVal}
       onSubmit={(e) => {
@@ -260,17 +331,38 @@ export default function ChatConsultantPage() {
       transition={{ type: "spring", stiffness: 200, damping: 25 }}
     >
       <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
+        accept=".pdf,.docx,.txt"
+      />
+      <button
+        type="button"
+        className="chat-attach-btn"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={isTyping || isDocUploading}
+        title="Upload Resume, SOP, LOR, or Transcript"
+      >
+        {isDocUploading ? (
+          <Loader2 size={18} className="chat-spin text-primary" style={{ animation: 'spin 1.5s linear infinite' }} />
+        ) : (
+          <Paperclip size={18} />
+        )}
+      </button>
+      <input
+        ref={inputRef}
         type="text"
         className="chat-input-field"
         placeholder="Ask PAI..."
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        disabled={isTyping}
+        disabled={isTyping || isDocUploading}
       />
       <button
         type="submit"
         className="chat-send-btn"
-        disabled={isTyping || !input.trim()}
+        disabled={isTyping || isDocUploading || !input.trim()}
         aria-label="Send message"
       >
         <Send size={18} />
@@ -279,10 +371,10 @@ export default function ChatConsultantPage() {
   );
 
   return (
-    <div className="chat-page-layout" style={{ height: '100vh' }}>
+    <div className="chat-page-layout" style={{ height: '100%' }}>
       
-      {/* Right Main Conversational Panel */}
-      <div className="chat-main-area">
+      {/* Main Conversational Panel */}
+      <div className="chat-main-area" style={{ width: '100%' }}>
         
         {hasMessages ? (
           /* Message Feed */
@@ -336,13 +428,36 @@ export default function ChatConsultantPage() {
               <div ref={chatEndRef} />
             </div>
 
-            {/* Bottom input area (active mode) */}
+            {/* Dynamic quick-reply pills */}
+            <AnimatePresence>
+              {!isTyping && suggestedOptions.length > 0 && (
+                <motion.div
+                  className="chat-dynamic-replies"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {suggestedOptions.map((option, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleSend(option)}
+                      className="chat-dynamic-pill"
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Bottom input area */}
             <div className="chat-input-bar-wrap">
-              {renderInputForm("chat-input-form-shared")}
+              {renderInputForm()}
             </div>
           </>
         ) : (
-          /* Starting clean state (Gemini Style Centered) */
+          /* Starting clean state */
           <div className="chat-greeting-wrap">
             <motion.h2 
               className="chat-greeting-title"
@@ -355,15 +470,15 @@ export default function ChatConsultantPage() {
 
             <div className="centered-input-container">
               <div className="chat-input-glow" />
-              {renderInputForm("chat-input-form-shared")}
+              {renderInputForm()}
             </div>
           </div>
         )}
 
-        {/* Preset tags (shown below active history or centered input) */}
-        {!isTyping && (
+        {/* Static greeting presets */}
+        {!hasMessages && !isTyping && (
           <div className="chat-presets-bar">
-            {preSets.map((preset, idx) => (
+            {greetingPresets.map((preset, idx) => (
               <button
                 key={idx}
                 onClick={() => handleSend(preset)}
@@ -376,6 +491,75 @@ export default function ChatConsultantPage() {
         )}
 
       </div>
+
+      {/* Upload Document Modal */}
+      <AnimatePresence>
+        {isUploadModalOpen && (
+          <div className="chat-upload-modal-overlay">
+            <motion.div 
+              className="chat-upload-modal-content"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="chat-upload-modal-header">
+                <h3>Upload Document to PAI</h3>
+                <button type="button" className="chat-upload-modal-close" onClick={() => {
+                  setIsUploadModalOpen(false);
+                  setUploadFile(null);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleUploadSubmit}>
+                <div className="chat-upload-form-group">
+                  <label htmlFor="chat-doc-name">Document Name</label>
+                  <input 
+                    id="chat-doc-name"
+                    type="text" 
+                    value={docName} 
+                    onChange={(e) => setDocName(e.target.value)} 
+                    required 
+                  />
+                </div>
+
+                <div className="chat-upload-form-group">
+                  <label htmlFor="chat-doc-type">Document Type</label>
+                  <select id="chat-doc-type" value={docType} onChange={(e) => setDocType(e.target.value)}>
+                    <option value="Resume">Resume / CV</option>
+                    <option value="SOP">SOP (Statement of Purpose)</option>
+                    <option value="LOR">LOR (Letter of Recommendation)</option>
+                    <option value="Transcript">Academic Transcript</option>
+                    <option value="Other">Other Document</option>
+                  </select>
+                </div>
+
+                <div className="chat-upload-form-group">
+                  <label htmlFor="chat-doc-uni">Target University</label>
+                  <select id="chat-doc-uni" value={docUni} onChange={(e) => setDocUni(e.target.value)}>
+                    {trackedUnis && trackedUnis.length > 0 ? (
+                      trackedUnis.map(u => (
+                        <option key={u.id} value={u.name}>{u.name}</option>
+                      ))
+                    ) : (
+                      ['Stanford University', 'MIT', 'London Business School', 'UCL', 'My Portfolio'].map(uni => (
+                        <option key={uni} value={uni}>{uni}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                <button type="submit" className="chat-upload-submit-btn">
+                  Upload & Sync with PAI
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

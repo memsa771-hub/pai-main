@@ -27,7 +27,9 @@ class Token(BaseModel):
 class EducationBase(BaseModel):
     degree: str
     school: str
+    major: Optional[str] = None
     period: Optional[str] = None
+    graduation_year: Optional[str] = None
     gpa: Optional[str] = None
     details: Optional[str] = None
 
@@ -45,7 +47,10 @@ class WorkExperienceBase(BaseModel):
     role: str
     company: str
     period: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
     description: Optional[str] = None
+    achievements: Optional[List[str]] = None
 
 class WorkExperienceCreate(WorkExperienceBase):
     pass
@@ -60,6 +65,7 @@ class WorkExperienceResponse(WorkExperienceBase):
 class ProjectBase(BaseModel):
     name: str
     description: Optional[str] = None
+    link_or_credential: Optional[str] = None
 
 class ProjectCreate(ProjectBase):
     pass
@@ -88,6 +94,8 @@ class UserUpdate(BaseModel):
     preferred_field: Optional[str] = None
     summary: Optional[str] = None
     skills: Optional[List[str]] = None
+    languages: Optional[List[str]] = None
+    goals: Optional[List[str]] = None
     career_goals_short: Optional[str] = None
     career_goals_long: Optional[str] = None
 
@@ -110,6 +118,8 @@ class UserResponse(BaseModel):
     preferred_field: Optional[str] = None
     summary: Optional[str] = None
     skills: Optional[str] = "[]" # JSON string
+    languages: Optional[str] = "[]" # JSON string
+    goals: Optional[str] = "[]" # JSON string
     career_goals_short: Optional[str] = None
     career_goals_long: Optional[str] = None
     avatar: Optional[str] = None

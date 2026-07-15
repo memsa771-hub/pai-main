@@ -28,6 +28,8 @@ class User(Base):
     # Vault & AI Profile fields
     summary = Column(Text, nullable=True)
     skills = Column(Text, nullable=True, default="[]") # JSON list of skills
+    languages = Column(Text, nullable=True, default="[]") # JSON list of languages spoken
+    goals = Column(Text, nullable=True, default="[]") # JSON list of goals
     career_goals_short = Column(Text, nullable=True)
     career_goals_long = Column(Text, nullable=True)
     avatar = Column(String(255), nullable=True, default="/avatar.webp")
@@ -49,7 +51,9 @@ class Education(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     degree = Column(String(100), nullable=False)
     school = Column(String(150), nullable=False)
+    major = Column(String(150), nullable=True)
     period = Column(String(50), nullable=True)
+    graduation_year = Column(String(10), nullable=True)
     gpa = Column(String(20), nullable=True)
     details = Column(Text, nullable=True)
 
@@ -63,7 +67,10 @@ class WorkExperience(Base):
     role = Column(String(100), nullable=False)
     company = Column(String(150), nullable=False)
     period = Column(String(50), nullable=True)
+    start_date = Column(String(30), nullable=True)
+    end_date = Column(String(30), nullable=True, default="Present")
     description = Column(Text, nullable=True)
+    achievements = Column(Text, nullable=True, default="[]") # JSON list of bullet-point strings
 
     user = relationship("User", back_populates="work_experience")
 
@@ -74,6 +81,7 @@ class Project(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     name = Column(String(150), nullable=False)
     description = Column(Text, nullable=True)
+    link_or_credential = Column(String(255), nullable=True)
 
     user = relationship("User", back_populates="projects")
 

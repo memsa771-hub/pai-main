@@ -26,14 +26,19 @@ export interface WorkExperience {
   role: string;
   company: string;
   period: string;
+  start_date?: string;
+  end_date?: string;
   description: string;
+  achievements?: string[];
 }
 
 export interface Education {
   id: string | number;
   degree: string;
   school: string;
+  major?: string;
   period: string;
+  graduation_year?: string;
   gpa: string;
   details?: string;
 }
@@ -42,6 +47,7 @@ export interface ProjectItem {
   id: string | number;
   name: string;
   description: string;
+  link_or_credential?: string;
 }
 
 export interface UserProfile {
@@ -52,6 +58,7 @@ export interface UserProfile {
   workExperience: WorkExperience[];
   education: Education[];
   skills: string[];
+  languages: string[];
   projects: ProjectItem[];
   careerGoalsShort: string;
   careerGoalsLong: string;
@@ -147,6 +154,8 @@ interface AppContextType {
   deleteExperience: (id: number) => Promise<void>;
   addProject: (proj: Omit<ProjectItem, 'id'>) => Promise<void>;
   deleteProject: (id: number) => Promise<void>;
+  addLanguage: (lang: string) => Promise<void>;
+  removeLanguage: (lang: string) => Promise<void>;
   
   addTrackedUni: (name: string, status: string) => Promise<void>;
   removeTrackedUni: (id: number) => Promise<void>;
@@ -158,7 +167,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const defaultProfile: UserProfile = {
   name: 'Jane Doe',
@@ -168,6 +177,7 @@ const defaultProfile: UserProfile = {
   workExperience: [],
   education: [],
   skills: [],
+  languages: [],
   projects: [],
   careerGoalsShort: '',
   careerGoalsLong: ''
@@ -232,10 +242,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (userRes.ok) {
         const userData = await userRes.json();
         
-        let skillsParsed = [];
+        let skillsParsed: string[] = [];
         try {
           if (userData.skills) {
             skillsParsed = JSON.parse(userData.skills);
+          }
+        } catch(e) {}
+
+        let languagesParsed: string[] = [];
+        try {
+          if (userData.languages) {
+            languagesParsed = JSON.parse(userData.languages);
           }
         } catch(e) {}
         
@@ -258,25 +275,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           intended_degree: userData.intended_degree,
           preferred_field: userData.preferred_field,
           skills: skillsParsed,
+          languages: languagesParsed,
           education: userData.education.map((e: any) => ({
             id: e.id,
             degree: e.degree,
             school: e.school,
+            major: e.major || '',
             period: e.period || '',
+            graduation_year: e.graduation_year || '',
             gpa: e.gpa || '',
             details: e.details || ''
           })),
-          workExperience: userData.work_experience.map((w: any) => ({
-            id: w.id,
-            role: w.role,
-            company: w.company,
-            period: w.period || '',
-            description: w.description || ''
-          })),
+          workExperience: userData.work_experience.map((w: any) => {
+            let achievementsParsed: string[] = [];
+            try {
+              if (w.achievements) achievementsParsed = JSON.parse(w.achievements);
+            } catch(e) {}
+            return {
+              id: w.id,
+              role: w.role,
+              company: w.company,
+              period: w.period || '',
+              start_date: w.start_date || '',
+              end_date: w.end_date || '',
+              description: w.description || '',
+              achievements: achievementsParsed
+            };
+          }),
           projects: userData.projects.map((p: any) => ({
             id: p.id,
             name: p.name,
-            description: p.description || ''
+            description: p.description || '',
+            link_or_credential: p.link_or_credential || ''
           })),
           careerGoalsShort: userData.career_goals_short || '',
           careerGoalsLong: userData.career_goals_long || ''
@@ -551,6 +581,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await updateProfile({ skills: updatedSkills });
   };
 
+  const addLanguage = async (lang: string) => {
+    if (profile.languages.includes(lang)) return;
+    const updatedLangs = [...profile.languages, lang];
+    await updateProfile({ languages: updatedLangs } as any);
+  };
+
+  const removeLanguage = async (lang: string) => {
+    const updatedLangs = profile.languages.filter(l => l !== lang);
+    await updateProfile({ languages: updatedLangs } as any);
+  };
+
   const updateProfile = async (data: Partial<UserProfile>) => {
     try {
       // Map frontend fields back to schema updates
@@ -562,6 +603,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (data.workExperience) delete body.workExperience;
       if (data.education) delete body.education;
       if (data.projects) delete body.projects;
+      // languages is handled at the top level, passed as-is
       
       const response = await apiFetch('/api/profile', {
         method: 'PUT',
@@ -717,6 +759,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteExperience,
         addProject,
         deleteProject,
+        addLanguage,
+        removeLanguage,
         addTrackedUni,
         removeTrackedUni,
         updateSettings,
