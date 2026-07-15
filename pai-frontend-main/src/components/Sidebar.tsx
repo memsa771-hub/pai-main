@@ -468,7 +468,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
             <div className="sidebar-profile-details">
               <div style={{ textAlign: 'left', overflow: 'hidden' }}>
                 <div style={{ fontSize: '12px', fontWeight: 600, color: '#000000', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {profile.name || 'Ramla'}
+                  {profile.name || 'User'}
                 </div>
                 <div style={{ fontSize: '9px', color: '#64748b' }}>
                   Student

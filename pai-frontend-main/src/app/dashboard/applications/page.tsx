@@ -11,40 +11,116 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 
 export default function ApplicationsPage() {
-  const { documents, trackedUnis } = useApp();
+  const { documents, trackedUnis, roadmaps } = useApp();
   const [activeTab, setActiveTab] = useState('');
   const [timelineMonthOffset, setTimelineMonthOffset] = useState(0);
-  
-  // Interactive checklist states
-  const [reqDocs, setReqDocs] = useState([
-    { name: 'Academic Transcripts', status: 'verified', label: 'VIEW' },
-    { name: 'Statement of Purpose', status: 'drafting', label: 'DRAFTING' },
-    { name: 'Letter of Rec (Academic)', status: 'pending', label: 'REQUEST' }
-  ]);
-
-  const handleDocAction = (index: number) => {
-    const updated = [...reqDocs];
-    if (updated[index].status === 'pending') {
-      updated[index].status = 'requesting';
-      updated[index].label = 'REQUESTING...';
-      
-      setTimeout(() => {
-        setReqDocs(prev => {
-          const docs = [...prev];
-          docs[index].status = 'requested';
-          docs[index].label = 'REQUESTED';
-          return docs;
-        });
-      }, 2000);
-    }
-    setReqDocs(updated);
-  };
 
   const tabs = trackedUnis.length > 0 
     ? trackedUnis.map(u => u.name) 
     : ['Stanford University', 'MIT', 'London Business School', 'UCL'];
   
   const effectiveTab = activeTab || tabs[0] || '';
+
+  // Interactive checklist states keyed by university
+  const [uniChecklists, setUniChecklists] = useState<Record<string, Array<{ name: string; status: string; label: string }>>>({});
+
+  const uniInsights: Record<string, { probability: number; matchRate: number; extraChance: number; benchmark: string; quality: string }> = {};
+
+  const uniScholarships: Record<string, { name: string; desc: string }> = {};
+
+  const uniDeadlines: Record<string, Array<{ type: string; name: string; month: string; day: string }>> = {};
+
+  const getInsightForUni = (uni: string) => {
+    if (uniInsights[uni]) return uniInsights[uni];
+    const hash = uni.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const probability = 65 + (hash % 25);
+    const matchRate = 75 + (hash % 20);
+    const extraChance = 3 + (hash % 5);
+    const benchmark = `Top ${(10 + (hash % 10))}%`;
+    const quality = hash % 2 === 0 ? 'Gold Standard' : 'Excellent';
+    return { probability, matchRate, extraChance, benchmark, quality };
+  };
+
+  const getDeadlinesForUni = (uni: string, trackedUni?: any) => {
+    if (uniDeadlines[uni]) return uniDeadlines[uni];
+    if (trackedUni?.deadlines && trackedUni.deadlines !== 'Rolling' && trackedUni.deadlines !== 'N/A') {
+      const dlStr = trackedUni.deadlines;
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      let month = 'Dec';
+      let day = '15';
+      for (const m of months) {
+        if (dlStr.toLowerCase().includes(m.toLowerCase())) {
+          month = m;
+          const match = dlStr.match(/\d+/);
+          if (match) day = match[0];
+          break;
+        }
+      }
+      return [
+        { type: 'Standard Application', name: `${uni} Deadline`, month, day },
+        { type: 'Scholarship Deadline', name: 'Financial Aid Support', month: months[(months.indexOf(month) + 1) % 12], day: '05' }
+      ];
+    }
+    return [
+      { type: 'Standard Application', name: `${uni} Regular Deadline`, month: 'Jan', day: '15' },
+      { type: 'Scholarship Deadline', name: 'Global Merit Funding', month: 'Feb', day: '01' }
+    ];
+  };
+
+  const handleDocAction = (index: number) => {
+    setUniChecklists(prev => {
+      const current = prev[effectiveTab] ? [...prev[effectiveTab]] : [
+        { name: 'Academic Transcripts', status: 'pending', label: 'REQUEST' },
+        { name: 'Statement of Purpose', status: 'pending', label: 'REQUEST' },
+        { name: 'Letter of Recommendation', status: 'pending', label: 'REQUEST' }
+      ];
+      
+      const updated = [...current];
+      if (updated[index].status === 'pending') {
+        updated[index].status = 'requesting';
+        updated[index].label = 'REQUESTING...';
+        
+        setTimeout(() => {
+          setUniChecklists(latest => {
+            const list = latest[effectiveTab] ? [...latest[effectiveTab]] : [];
+            if (list[index]) {
+              list[index] = {
+                ...list[index],
+                status: 'requested',
+                label: 'REQUESTED'
+              };
+            }
+            return {
+              ...latest,
+              [effectiveTab]: list
+            };
+          });
+        }, 2000);
+      }
+      return {
+        ...prev,
+        [effectiveTab]: updated
+      };
+    });
+  };
+
+  const trackedUni = trackedUnis.find(u => u.name === effectiveTab);
+  const roadmap = roadmaps[effectiveTab];
+
+  const currentChecklist = uniChecklists[effectiveTab] || [
+    { name: 'Academic Transcripts', status: 'pending', label: 'REQUEST' },
+    { name: 'Statement of Purpose', status: 'pending', label: 'REQUEST' },
+    { name: 'Letter of Recommendation', status: 'pending', label: 'REQUEST' }
+  ];
+
+  const currentInsight = getInsightForUni(effectiveTab);
+  const currentDeadlines = getDeadlinesForUni(effectiveTab, trackedUni);
+
+  const scholarships = trackedUni?.reqs ? (typeof trackedUni.reqs === 'string' ? JSON.parse(trackedUni.reqs) : trackedUni.reqs) : [];
+  const scholarshipName = scholarships.length > 0 ? scholarships[0] : (uniScholarships[effectiveTab]?.name || 'Global Merit Scholarship');
+  const scholarshipDesc = scholarships.length > 0 
+    ? `You are eligible to apply for the ${scholarships[0]} at ${effectiveTab}.`
+    : (uniScholarships[effectiveTab]?.desc || `Based on your academic profile, you qualify for institutional funding options.`);
 
   return (
     <>
@@ -146,19 +222,19 @@ export default function ApplicationsPage() {
           ))}
         </div>
 
-        {/* Stanford Pathway Progress Flowchart */}
+        {/* Pathway Progress Flowchart */}
         <div className="card" style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div className="uni-icon" style={{ background: 'var(--border-light)', color: 'var(--text-primary)', width: '38px', height: '38px' }}>
-                P
+                {effectiveTab.charAt(0)}
               </div>
               <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 700 }}>Stanford Pathway</h3>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Master of Computer Science (MSCS)</span>
+                <h3 style={{ fontSize: '16px', fontWeight: 700 }}>{effectiveTab} Pathway</h3>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{roadmap?.degree || 'Graduate Program'}</span>
               </div>
             </div>
-            <span className="badge badge-primary">In Progress</span>
+            <span className="badge badge-primary">{trackedUni?.status || 'In Progress'}</span>
           </div>
 
           {/* Flowchart Progress Visuals */}
@@ -203,7 +279,7 @@ export default function ApplicationsPage() {
                 <Check size={16} />
               </div>
               <div style={{ fontSize: '12px', fontWeight: 700 }}>PREPARATION</div>
-              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>GRE Verified</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>{trackedUni?.avg_gre ? `Target GRE: ${trackedUni.avg_gre}` : 'Verified'}</div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', zIndex: 3, position: 'relative' }}>
@@ -221,7 +297,7 @@ export default function ApplicationsPage() {
                 <FileText size={16} />
               </div>
               <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary)' }}>APPLICATION</div>
-              <div style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 600 }}>Drafting SOP v2</div>
+              <div style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 600 }}>{roadmap?.sections[1]?.title || 'Drafting SOP'}</div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', zIndex: 3, position: 'relative' }}>
@@ -240,7 +316,7 @@ export default function ApplicationsPage() {
                 <Landmark size={14} />
               </div>
               <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>FINANCIALS</div>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Pending</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>{scholarships.length > 0 ? 'Scholarship Found' : 'Pending'}</div>
             </div>
           </div>
         </div>
@@ -262,7 +338,7 @@ export default function ApplicationsPage() {
               </h3>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {reqDocs.map((doc, idx) => (
+                {currentChecklist.map((doc, idx) => (
                   <div 
                     key={idx} 
                     style={{ 
@@ -270,11 +346,11 @@ export default function ApplicationsPage() {
                       alignItems: 'center', 
                       justifyContent: 'space-between',
                       padding: '12px 0',
-                      borderBottom: idx !== reqDocs.length - 1 ? '1px solid var(--border-light)' : 'none'
+                      borderBottom: idx !== currentChecklist.length - 1 ? '1px solid var(--border-light)' : 'none'
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      {doc.status === 'verified' ? (
+                      {doc.status === 'verified' || doc.status === 'completed' ? (
                         <Check size={18} style={{ color: 'var(--success)' }} />
                       ) : doc.status === 'drafting' ? (
                         <Circle size={18} style={{ color: 'var(--primary)', fill: 'rgba(0, 45, 156, 0.15)' }} />
@@ -286,14 +362,14 @@ export default function ApplicationsPage() {
                       <span style={{ 
                         fontWeight: 600, 
                         fontSize: '14px',
-                        color: doc.status === 'verified' ? 'var(--text-primary)' : 'var(--text-primary)' 
+                        color: 'var(--text-primary)' 
                       }}>
                         {doc.name}
                       </span>
                     </div>
 
                     <div>
-                      {doc.status === 'verified' && (
+                      {(doc.status === 'verified' || doc.status === 'completed') && (
                         <button className="btn btn-outline" style={{ padding: '6px 12px', fontSize: '11px' }}>
                           VIEW
                         </button>
@@ -345,9 +421,9 @@ export default function ApplicationsPage() {
               }}>
                 <Landmark size={24} style={{ marginTop: '2px' }} />
                 <div>
-                  <h4 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>Scholarship Eligible</h4>
+                  <h4 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>{scholarshipName}</h4>
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '12px' }}>
-                    Your profile qualifications align with the **Knight-Hennessy Scholars** program requirements.
+                    {scholarshipDesc}
                   </p>
                   <Link href="#" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     Begin Application <ArrowRight size={14} />
@@ -373,7 +449,7 @@ export default function ApplicationsPage() {
 
               <div style={{ margin: '24px 0' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                  <span style={{ fontSize: '48px', fontWeight: 800, lineHeight: 1 }}>84</span>
+                  <span style={{ fontSize: '48px', fontWeight: 800, lineHeight: 1 }}>{currentInsight.probability}</span>
                   <span style={{ fontSize: '24px', fontWeight: 700 }}>%</span>
                 </div>
                 <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '8px', opacity: 0.9 }}>
@@ -382,17 +458,17 @@ export default function ApplicationsPage() {
               </div>
 
               <p style={{ fontSize: '13px', opacity: 0.9, lineHeight: 1.5, marginBottom: '24px', borderBottom: '1px solid rgba(255,255,255,0.15)', paddingBottom: '20px' }}>
-                Your profile matches **92%** of recently admitted candidates. Refine your SOP to gain **+4%** chance.
+                Your profile matches **{currentInsight.matchRate}%** of recently admitted candidates. Refine your SOP to gain **+{currentInsight.extraChance}%** chance.
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ opacity: 0.8 }}>Peer Benchmarking</span>
-                  <span style={{ fontWeight: 700 }}>Top 10%</span>
+                  <span style={{ fontWeight: 700 }}>{currentInsight.benchmark}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ opacity: 0.8 }}>Document Quality</span>
-                  <span style={{ fontWeight: 700 }}>Gold Standard</span>
+                  <span style={{ fontWeight: 700 }}>{currentInsight.quality}</span>
                 </div>
               </div>
             </div>
@@ -404,52 +480,33 @@ export default function ApplicationsPage() {
                   Deadlines
                 </h3>
                 <span className="badge badge-danger" style={{ fontSize: '9px', padding: '2px 8px' }}>
-                  14 Days Left
+                  Action Required
                 </span>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '20px' }}>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <div style={{ 
-                    background: 'var(--background)', 
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm)',
-                    width: '42px',
-                    height: '44px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>Dec</span>
-                    <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>15</span>
+                {currentDeadlines.map((dl, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ 
+                      background: 'var(--background)', 
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      width: '42px',
+                      height: '44px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>{dl.month}</span>
+                      <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>{dl.day}</span>
+                    </div>
+                    <div>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700 }}>{dl.type}</h4>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{dl.name}</span>
+                    </div>
                   </div>
-                  <div>
-                    <h4 style={{ fontSize: '14px', fontWeight: 700 }}>Standard Application</h4>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Stanford Round 1</span>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <div style={{ 
-                    background: 'var(--background)', 
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm)',
-                    width: '42px',
-                    height: '44px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>Jan</span>
-                    <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>05</span>
-                  </div>
-                  <div>
-                    <h4 style={{ fontSize: '14px', fontWeight: 700 }}>Scholarship Form</h4>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Institutional Funding</span>
-                  </div>
-                </div>
+                ))}
               </div>
 
               <button className="btn btn-outline" style={{ width: '100%', padding: '10px', fontSize: '12px', justifyContent: 'center' }}>
@@ -503,7 +560,7 @@ export default function ApplicationsPage() {
               {/* Gantt row */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', height: '80px', alignItems: 'center', position: 'relative' }}>
                 
-                {/* Block 1: Stanford GRE (Oct) */}
+                {/* Block 1: University GRE (Oct) */}
                 <div style={{ padding: '0 10px', height: '100%', display: 'flex', alignItems: 'center' }}>
                   <div style={{
                     width: '100%',
@@ -515,7 +572,7 @@ export default function ApplicationsPage() {
                     fontSize: '12px',
                     fontWeight: 700
                   }}>
-                    Stanford GRE
+                    {effectiveTab} GRE
                     <div style={{ fontSize: '10px', fontWeight: 500, color: 'var(--text-secondary)' }}>Completed Oct 24</div>
                   </div>
                 </div>
@@ -537,7 +594,7 @@ export default function ApplicationsPage() {
                   </div>
                 </div>
 
-                {/* Block 3: Final Submission & MIT Deadline (Dec) */}
+                {/* Block 3: Final Submission & Target Deadline (Dec) */}
                 <div style={{ padding: '0 10px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '6px' }}>
                   <div style={{
                     width: '100%',
@@ -548,7 +605,7 @@ export default function ApplicationsPage() {
                     fontSize: '11px',
                     fontWeight: 700
                   }}>
-                    Final Submission (Due Dec 15)
+                    Final Submission (Due {currentDeadlines[0]?.month || 'Dec'} {currentDeadlines[0]?.day || '15'})
                   </div>
                   <div style={{
                     width: '100%',
@@ -560,7 +617,7 @@ export default function ApplicationsPage() {
                     fontSize: '11px',
                     fontWeight: 600
                   }}>
-                    MIT Deadline
+                    {effectiveTab} Deadline
                   </div>
                 </div>
 

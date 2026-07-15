@@ -170,10 +170,10 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 const defaultProfile: UserProfile = {
-  name: 'Jane Doe',
-  email: 'jane.doe@berkeley.edu',
+  name: '',
+  email: '',
   avatar: '/avatar.webp',
-  summary: 'A motivated undergraduate student passionate about bridging the gap between technology and human-centric design.',
+  summary: '',
   workExperience: [],
   education: [],
   skills: [],

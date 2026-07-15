@@ -17,12 +17,44 @@ export default function MyRoadmapPage() {
   const [newTrackType, setNewTrackType] = useState('Alternative');
 
   const activeRoadmap = roadmaps[activeRoadmapUni] || roadmaps['Stanford University'];
+  const currentUniName = activeRoadmap?.university || '';
+
+  const [tracksByUni, setTracksByUni] = useState<Record<string, Array<{ name: string; description: string; type: string; isPrimary?: boolean }>>>({});
+
+  const currentTracks = tracksByUni[currentUniName] || [
+    { 
+      name: activeRoadmap?.degree ? `${activeRoadmap.degree} Track` : 'General Track', 
+      description: `Core pathway for admission to ${currentUniName}.`, 
+      type: 'Primary', 
+      isPrimary: true 
+    }
+  ];
 
   const handleAddTrack = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTrackName) return;
 
-    // Simulate adding track by displaying success alert
+    const newTrack = {
+      name: newTrackName,
+      description: newTrackDesc,
+      type: newTrackType,
+      isPrimary: newTrackType === 'Primary'
+    };
+
+    setTracksByUni(prev => {
+      const existing = prev[currentUniName] || [];
+      const updated = existing.map(t => {
+        if (newTrack.isPrimary && t.isPrimary) {
+          return { ...t, isPrimary: false, type: 'Alternative' };
+        }
+        return t;
+      });
+      return {
+        ...prev,
+        [currentUniName]: [...updated, newTrack]
+      };
+    });
+
     setIsAddTrackOpen(false);
     setNewTrackName('');
     setNewTrackDesc('');
@@ -185,38 +217,32 @@ export default function MyRoadmapPage() {
               </h3>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ 
-                  padding: '16px', 
-                  border: '2px solid var(--primary)', 
-                  borderRadius: 'var(--radius-md)', 
-                  background: 'var(--primary-light)' 
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--primary)' }}>Bachelors in Business</h4>
-                    <span className="badge badge-primary" style={{ fontSize: '9px' }}>Primary</span>
+                {currentTracks.map((track, idx) => (
+                  <div 
+                    key={idx}
+                    style={{ 
+                      padding: '16px', 
+                      border: track.isPrimary ? '2px solid var(--primary)' : '1px solid var(--border)', 
+                      borderRadius: 'var(--radius-md)', 
+                      background: track.isPrimary ? 'var(--primary-light)' : 'var(--surface)' 
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, color: track.isPrimary ? 'var(--primary)' : 'inherit' }}>{track.name}</h4>
+                      <span className={`badge ${track.isPrimary ? 'badge-primary' : 'badge-gray'}`} style={{ fontSize: '9px' }}>
+                        {track.type}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: track.isPrimary ? '8px' : '0' }}>
+                      {track.description}
+                    </p>
+                    {track.isPrimary && (
+                      <Link href="#" style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Compass size={12} /> View Track Details
+                      </Link>
+                    )}
                   </div>
-                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '8px' }}>
-                    Focus on leadership and quantitative analysis for GSB undergraduate pathway.
-                  </p>
-                  <Link href="#" style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Compass size={12} /> View Track Details
-                  </Link>
-                </div>
-
-                <div style={{ 
-                  padding: '16px', 
-                  border: '1px solid var(--border)', 
-                  borderRadius: 'var(--radius-md)', 
-                  background: 'var(--surface)' 
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <h4 style={{ fontSize: '14px', fontWeight: 700 }}>Economics Minor</h4>
-                    <span className="badge badge-gray" style={{ fontSize: '9px' }}>Alternative</span>
-                  </div>
-                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    Backup track focusing purely on macro/micro economics.
-                  </p>
-                </div>
+                ))}
 
                 <button 
                   className="btn btn-outline" 
