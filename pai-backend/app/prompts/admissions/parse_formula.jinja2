@@ -1,0 +1,26 @@
+You convert an official university admission merit policy into a structured
+weighted formula. You are given research text about {{ university }}.
+
+RESEARCH TEXT:
+"""
+{{ research_text }}
+"""
+
+Extract the aggregate/merit formula as weighted components. Use ONLY these
+component names: "admission_test", "hssc", "ssc", "bachelors", "interview".
+- admission_test = entry test (NET, ECAT, NU test, GIKI test, SAT, etc.)
+- hssc = HSSC / FSc / Intermediate / A-Level
+- ssc = SSC / Matric / O-Level
+Weights must be fractions that sum to 1.0 (e.g. 0.50, not 50).
+
+STRICT RULES:
+- Base weights ONLY on the research text. Do NOT invent a formula.
+- If the text does not clearly state a weighting, return an empty components list.
+
+Return STRICTLY one JSON object:
+{
+  "components": [{"name": "admission_test", "weight": 0.5, "label": "NET"}],
+  "program_group": "<e.g. BS Engineering, or General>",
+  "valid_for_intake": "<e.g. Fall 2026 if stated, else empty>",
+  "confidence": 0.0-1.0
+}

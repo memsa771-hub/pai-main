@@ -1,14 +1,48 @@
+# --- Web framework ---
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
-sqlalchemy==2.0.30
-pg8000==1.31.2
-python-dotenv==1.0.1
+
+# --- Data / validation ---
 pydantic==2.7.3
+pydantic-settings==2.3.4
+
+# --- Database (async target + sync legacy during migration) ---
+sqlalchemy[asyncio]==2.0.30
+asyncpg==0.29.0
+pg8000==1.31.2
+alembic==1.13.2
+
+# --- HTTP / AI / research ---
+httpx==0.27.0
+tenacity==8.5.0
+requests==2.32.3
+
+# --- Auth / security ---
+pyjwt[crypto]==2.8.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+
+# --- Supabase (auth admin + storage) ---
+supabase==2.5.1
+
+# --- Templating (prompts) ---
+jinja2==3.1.4
+
+# --- Cache (optional at runtime; in-memory fallback when unset) ---
+redis==5.0.7
+
+# --- File handling / uploads / CV generation ---
 python-multipart==0.0.9
 python-docx==1.1.2
-reportlab==4.2.0
-pypdf==4.2.0
 docx2txt==0.8
-requests==2.32.3
+pypdf==4.2.0
+reportlab==4.2.0
+
+# --- Environment ---
+python-dotenv==1.0.1
+
+# --- Dev / testing / quality ---
+pytest==8.2.2
+pytest-asyncio==0.23.7
+ruff==0.5.1
+mypy==1.10.1

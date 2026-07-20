@@ -30,7 +30,7 @@ BACKEND = ROOT / "pai-backend"
 FRONTEND = ROOT / "pai-frontend-main"
 VENV_DIR = BACKEND / ".venv"
 ENV_FILE = BACKEND / ".env"
-ENV_EXAMPLE = BACKEND / ".env.example"
+ENV_EXAMPLE = BACKEND / "env.example"
 
 BACKEND_HOST = "127.0.0.1"
 BACKEND_PORT = 8000
@@ -77,9 +77,53 @@ def command_exists(name: str) -> bool:
     return shutil.which(name) is not None
 
 
+# Backend dependencies (pydantic-core 2.18.4 in particular) only ship prebuilt
+# wheels up through Python 3.12. On 3.13+ pip tries to compile from source,
+# which requires Rust + the MSVC linker and fails on most machines. Pin the
+# venv to 3.12 so `python run_dev.py` "just works" regardless of the default
+# `python` on PATH.
+BACKEND_PYTHON_VERSION = "3.12"
+
+
+def find_backend_python() -> str:
+    """Locate a Python 3.12 interpreter to build the backend venv with."""
+    if is_windows() and command_exists("py"):
+        check = subprocess.run(
+            ["py", f"-{BACKEND_PYTHON_VERSION}", "-c", "print('ok')"],
+            capture_output=True,
+            text=True,
+        )
+        if check.returncode == 0:
+            return "py"  # caller will pass along ["-3.12", ...] via helper below
+
+    for candidate in (f"python{BACKEND_PYTHON_VERSION}", "python3.12", "python312"):
+        if command_exists(candidate):
+            return candidate
+
+    fallback = shutil.which("python") or shutil.which("python3")
+    if fallback:
+        check = subprocess.run([fallback, "--version"], capture_output=True, text=True)
+        version = (check.stdout or check.stderr).strip()
+        if BACKEND_PYTHON_VERSION not in version:
+            warn(
+                f"Could not find Python {BACKEND_PYTHON_VERSION} — using {version} instead. "
+                f"If dependency installation fails, install Python {BACKEND_PYTHON_VERSION} "
+                f"(e.g. `winget install Python.Python.3.12`) and rerun with --setup."
+            )
+        return fallback
+
+    fail(f"Could not find a Python interpreter. Install Python {BACKEND_PYTHON_VERSION} and try again.")
+
+
+def backend_python_command(python_bin: str) -> list[str]:
+    if python_bin == "py":
+        return ["py", f"-{BACKEND_PYTHON_VERSION}"]
+    return [python_bin]
+
+
 def ensure_prerequisites() -> None:
-    if not command_exists("python") and not command_exists("python3"):
-        fail("Python is not installed. Install Python 3.10+ and try again.")
+    if not command_exists("python") and not command_exists("python3") and not command_exists("py"):
+        fail("Python is not installed. Install Python 3.12 and try again.")
     if not command_exists("node"):
         fail("Node.js is not installed. Install Node.js 18+ and try again.")
     if not command_exists("npm"):
@@ -96,7 +140,7 @@ def ensure_env_file() -> None:
     if ENV_EXAMPLE.exists():
         shutil.copy(ENV_EXAMPLE, ENV_FILE)
         warn(
-            f"Created {ENV_FILE.name} from .env.example — add your API keys before using chat/research features."
+            f"Created {ENV_FILE.name} from {ENV_EXAMPLE.name} — add your API keys before using chat/research features."
         )
     else:
         warn(f"No {ENV_FILE.name} found. Backend may fail without API keys and database settings.")
@@ -127,17 +171,15 @@ def venv_is_ready() -> bool:
 
 
 def ensure_backend_venv(force_setup: bool) -> None:
-    python_bin = shutil.which("python") or shutil.which("python3")
-    if not python_bin:
-        fail("Could not find python executable.")
+    python_bin = find_backend_python()
 
     if force_setup and VENV_DIR.exists():
         log("Removing existing backend virtual environment...")
         shutil.rmtree(VENV_DIR, ignore_errors=True)
 
     if not VENV_DIR.exists():
-        log("Creating backend virtual environment...")
-        run_command([python_bin, "-m", "venv", str(VENV_DIR)], ROOT)
+        log(f"Creating backend virtual environment with {python_bin}...")
+        run_command([*backend_python_command(python_bin), "-m", "venv", str(VENV_DIR)], ROOT)
 
     pip = venv_python()
     ensure_pip(pip)
@@ -153,6 +195,13 @@ def ensure_backend_venv(force_setup: bool) -> None:
         marker.write_text("ok", encoding="utf-8")
 
 
+def npm_exe() -> str:
+    # On Windows, npm is a .cmd shim; subprocess.run(shell=False) needs the
+    # exact filename or it raises FileNotFoundError even though `npm` works
+    # fine in an interactive shell.
+    return "npm.cmd" if is_windows() else "npm"
+
+
 def ensure_frontend_deps(force_setup: bool) -> None:
     node_modules = FRONTEND / "node_modules"
     if force_setup and node_modules.exists():
@@ -161,7 +210,7 @@ def ensure_frontend_deps(force_setup: bool) -> None:
 
     if force_setup or not node_modules.exists():
         log("Installing frontend Node dependencies (this may take a few minutes)...")
-        run_command(["npm", "install"], FRONTEND)
+        run_command([npm_exe(), "install"], FRONTEND)
 
 
 def clean_frontend_cache() -> None:
@@ -193,7 +242,7 @@ def maybe_setup_postgres(enable_postgres: bool) -> None:
 
 
 def npm_cmd() -> list[str]:
-    return ["npm.cmd", "run", "dev"] if is_windows() else ["npm", "run", "dev"]
+    return [npm_exe(), "run", "dev"]
 
 
 def start_backend() -> subprocess.Popen:

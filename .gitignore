@@ -1,8 +1,17 @@
-# Environment variables
+# Environment / secrets — never commit
 .env
 .env.*
-.env.local
-.env.production
+!.env.example
+env.example.local
+pai-backend/.env
+
+# Local / internal docs (keep off GitHub)
+CLAUDE.md
+**/CLAUDE.md
+AGENTS.md
+**/AGENTS.md
+*.pdf
+.cursor/
 
 # PostgreSQL local installation & data
 pgsql/
@@ -25,6 +34,12 @@ build/
 .venv/
 venv/
 env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
 
 # Node / Frontend
 node_modules/
@@ -48,3 +63,4 @@ Thumbs.db
 # Misc
 *.pem
 *.log
+.DS_Store

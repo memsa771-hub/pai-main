@@ -1,0 +1,1 @@
+"""Scholarship schemas — TBD."""

@@ -1,0 +1,17 @@
+# Placement AI backend — package metadata (CLAUDE.md §4)
+[project]
+name = "pai-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "Placement AI Phase 1 backend"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+filterwarnings = ["ignore::DeprecationWarning"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

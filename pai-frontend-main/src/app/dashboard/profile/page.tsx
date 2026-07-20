@@ -12,6 +12,7 @@ import './profile.css';
 export default function MyProfilePage() {
   const { 
     profile, 
+    fetchState,
     addSkill, 
     removeSkill, 
     addLanguage,
@@ -24,6 +25,10 @@ export default function MyProfilePage() {
     addProject,
     deleteProject
   } = useApp();
+
+  useEffect(() => {
+    fetchState();
+  }, []);
   
   const [editingSummary, setEditingSummary] = useState(false);
   const [summaryInput, setSummaryInput] = useState(profile.summary);

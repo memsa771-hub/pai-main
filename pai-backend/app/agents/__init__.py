@@ -1,2 +1,1 @@
-from . import admissions_agent
-from . import profile_agent
+"""New-contract agents (CLAUDE.md §4). Legacy ``*_agent.py`` files removed."""
