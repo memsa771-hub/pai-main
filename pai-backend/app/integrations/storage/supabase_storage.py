@@ -51,6 +51,18 @@ def ensure_bucket() -> bool:
         logger.warning("storage_not_configured")
         return False
     bucket = _bucket()
+
+    # Prefer GET — POST /bucket returns 400 when the bucket already exists,
+    # which looks like a startup failure in logs even though it's harmless.
+    try:
+        get_resp = httpx.get(f"{base}/bucket/{bucket}", headers=headers, timeout=_TIMEOUT)
+        if get_resp.status_code == 200:
+            logger.info("storage_bucket_ready", extra={"bucket": bucket})
+            return True
+    except httpx.HTTPError as exc:
+        logger.warning("storage_ensure_bucket_failed", extra={"error": str(exc)})
+        return False
+
     try:
         resp = httpx.post(
             f"{base}/bucket",
@@ -64,11 +76,14 @@ def ensure_bucket() -> bool:
     if resp.status_code in (200, 201):
         logger.info("storage_bucket_created", extra={"bucket": bucket})
         return True
-    # 400/409 with a "already exists"/"Duplicate" body means it's already there.
     body = resp.text.lower()
     if resp.status_code in (400, 409) and ("exist" in body or "duplicate" in body):
+        logger.info("storage_bucket_ready", extra={"bucket": bucket})
         return True
-    logger.warning("storage_ensure_bucket_unexpected", extra={"status": resp.status_code})
+    logger.warning(
+        "storage_ensure_bucket_unexpected",
+        extra={"status": resp.status_code, "body": resp.text[:200]},
+    )
     return False
 
 

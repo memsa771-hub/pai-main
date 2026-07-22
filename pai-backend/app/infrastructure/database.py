@@ -11,6 +11,7 @@ module is migrated onto this layer.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -41,14 +42,19 @@ def _build_engine() -> AsyncEngine:
     if not url:
         raise RuntimeError("DATABASE_URL is not configured.")
 
-    # NullPool + disabled statement cache keeps us compatible with Supabase's
-    # transaction-mode connection pooler (pgbouncer), which does not support
-    # server-side prepared statements.
+    # Supabase transaction pooler = pgbouncer (port 6543). Named prepared
+    # statements collide across clients on the same backend connection.
+    # SQLAlchemy docs: NullPool + unique prepared_statement_name_func.
+    # Also disable both caches (SQLAlchemy + asyncpg).
     return create_async_engine(
         url,
         echo=settings.db_echo,
         poolclass=NullPool,
-        connect_args={"statement_cache_size": 0},
+        connect_args={
+            "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4().hex}__",
+        },
     )
 
 
