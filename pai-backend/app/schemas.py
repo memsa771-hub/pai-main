@@ -1,6 +1,8 @@
-from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+import json
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 # Auth Schemas
 class UserCreate(BaseModel):
@@ -51,6 +53,26 @@ class WorkExperienceBase(BaseModel):
     end_date: Optional[str] = None
     description: Optional[str] = None
     achievements: Optional[List[str]] = None
+
+    @field_validator("achievements", mode="before")
+    @classmethod
+    def _parse_achievements(cls, value):
+        """DB stores achievements as JSON text; coerce to a list for responses."""
+        if value is None or value == "":
+            return None
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                return [value] if value.strip() else []
+            if isinstance(parsed, list):
+                return parsed
+            if parsed is None:
+                return []
+            return [str(parsed)]
+        return value
 
 class WorkExperienceCreate(WorkExperienceBase):
     pass
