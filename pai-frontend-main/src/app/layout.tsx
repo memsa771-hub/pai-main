@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import "../components/components.css";
 
 import { AppProvider } from "@/context/AppContext";
+import { AppProviders } from "@/providers/app-providers";
 
 export const metadata: Metadata = {
   title: "Placement AI - AI Admissions Companion",
-  description: "Your AI companion to easy admissions to your desired university.",
+  description:
+    "Your AI companion to easy admissions to your desired university.",
 };
 
 export default function RootLayout({
@@ -32,7 +33,7 @@ export default function RootLayout({
       </head>
       <body>
         <AppProvider>
-          {children}
+          <AppProviders>{children}</AppProviders>
         </AppProvider>
       </body>
     </html>

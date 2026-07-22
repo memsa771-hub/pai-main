@@ -22,13 +22,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const menuItems = [
-    { name: 'PAI', path: '/dashboard/chat', icon: <MessageSquare size={13} /> },
-    { name: 'Roadmap', path: '/dashboard/roadmap', icon: <Compass size={13} /> },
-    { name: 'Documents', path: '/dashboard/documents', icon: <FileText size={13} /> },
-    { name: 'Applications', path: '/dashboard/applications', icon: <Landmark size={13} /> },
-    { name: 'Uni Tracker', path: '/dashboard/uni-tracker', icon: <TrendingUp size={13} /> },
-    { name: 'Profile', path: '/dashboard/profile', icon: <User size={13} /> },
-    { name: 'Settings', path: '/dashboard/settings', icon: <SettingsIcon size={13} /> },
+    { name: 'PAI', path: '/chat', icon: <MessageSquare size={13} /> },
+    { name: 'Roadmap', path: '/roadmap', icon: <Compass size={13} /> },
+    { name: 'Documents', path: '/documents', icon: <FileText size={13} /> },
+    { name: 'Universities', path: '/universities', icon: <Landmark size={13} /> },
+    { name: 'Tracker', path: '/tracker', icon: <TrendingUp size={13} /> },
+    { name: 'Profile', path: '/profile', icon: <User size={13} /> },
+    { name: 'Settings', path: '/settings', icon: <SettingsIcon size={13} /> },
   ];
 
   const handleLogout = () => {
@@ -350,7 +350,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
       >
         {/* Logo link: always mounted, fades out text when collapsed */}
         <Link 
-          href="/dashboard/chat" 
+          href="/chat" 
           className="sidebar-logo-link"
           style={{ 
             display: 'flex', 
@@ -504,7 +504,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
             </div>
             
             <Link 
-              href="/dashboard/profile" 
+              href="/profile" 
               className="sidebar-dropdown-item" 
               onClick={() => setIsDropdownOpen(false)}
             >
@@ -513,7 +513,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
             </Link>
             
             <Link 
-              href="/dashboard/settings" 
+              href="/settings" 
               className="sidebar-dropdown-item" 
               onClick={() => setIsDropdownOpen(false)}
             >
