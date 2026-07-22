@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Send, User, Sparkles, Paperclip, Loader2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -19,15 +19,39 @@ interface ChatSession {
   messages: ChatMessage[];
 }
 
+const ACTIVE_SESSION_KEY = 'pai-active-chat-session';
+
+/** Survives Next.js route unmounts when switching dashboard tabs. */
+let chatMemory: {
+  sessions: ChatSession[];
+  activeSessionId: string | null;
+} | null = null;
+
+function mapApiMessages(data: any[]): ChatMessage[] {
+  return data.map((m: any) => ({
+    id: m.id,
+    sender: m.sender === 'user' ? 'user' : 'ai',
+    text: m.text,
+    timestamp: m.timestamp,
+  }));
+}
+
 export default function ChatConsultantPage() {
   const { profile, logout, apiFetch, uploadDocument, trackedUnis } = useApp();
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(
+    () => chatMemory?.activeSessionId ?? null
+  );
+  const [sessions, setSessions] = useState<ChatSession[]>(
+    () => chatMemory?.sessions ?? []
+  );
+  const [isLoadingHistory, setIsLoadingHistory] = useState(() => !chatMemory);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [suggestedOptions, setSuggestedOptions] = useState<string[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Skip one messages fetch after temp→real session id swap (we already have local msgs).
+  const skipMessageFetchRef = useRef(false);
 
   // Document uploading state
   const [isDocUploading, setIsDocUploading] = useState(false);
@@ -90,55 +114,125 @@ export default function ChatConsultantPage() {
 
   const userName = profile.name ? profile.name.split(' ')[0] : 'Student';
 
-  // Load chat sessions from backend on mount and select the latest one automatically
+  // Keep module cache in sync so leaving Chat → Profile → Chat restores instantly.
   useEffect(() => {
-    const loadSessions = async () => {
+    chatMemory = { sessions, activeSessionId };
+    if (activeSessionId && !activeSessionId.startsWith('temp-')) {
+      try {
+        sessionStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId);
+      } catch {
+        /* ignore quota / private mode */
+      }
+    }
+  }, [sessions, activeSessionId]);
+
+  const fetchMessagesForSession = useCallback(
+    async (sessionId: string): Promise<ChatMessage[]> => {
+      const res = await apiFetch(`/api/chat/sessions/${sessionId}/messages`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return mapApiMessages(data);
+    },
+    // apiFetch is stable in practice (reads token at call time); omit to avoid remount loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  // Atomic bootstrap: sessions + active session messages in one pass (no empty flash race).
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      const hadCache = Boolean(chatMemory?.sessions?.some((s) => s.messages.length > 0));
+      if (!hadCache) setIsLoadingHistory(true);
+
       try {
         const res = await apiFetch('/api/chat/sessions');
-        if (res.ok) {
-          const data = await res.json();
-          const mapped: ChatSession[] = data.map((s: any) => ({
+        if (!res.ok || cancelled) return;
+
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) {
+          if (!cancelled) {
+            setSessions([]);
+            setActiveSessionId(null);
+          }
+          return;
+        }
+
+        let preferred: string | null = null;
+        try {
+          preferred = sessionStorage.getItem(ACTIVE_SESSION_KEY);
+        } catch {
+          preferred = null;
+        }
+        const cachedId = chatMemory?.activeSessionId ?? null;
+        if (!preferred || !data.some((s: any) => s.id === preferred)) {
+          preferred =
+            cachedId && data.some((s: any) => s.id === cachedId)
+              ? cachedId
+              : data[0].id;
+        }
+
+        const messages = await fetchMessagesForSession(preferred);
+        if (cancelled) return;
+
+        setSessions(
+          data.map((s: any) => ({
             id: s.id,
             title: s.title,
-            messages: []
-          }));
-          setSessions(mapped);
-          
-          // Auto-select the most recent session to preserve conversation history
-          if (mapped.length > 0) {
-            setActiveSessionId(mapped[0].id);
-          }
-        }
+            messages: s.id === preferred ? messages : [],
+          }))
+        );
+        skipMessageFetchRef.current = true;
+        setActiveSessionId(preferred);
       } catch (e) {
         console.error('Failed to load chat sessions', e);
+      } finally {
+        if (!cancelled) setIsLoadingHistory(false);
       }
     };
-    loadSessions();
+
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
+    // Run once on mount; chatMemory + sessionStorage restore active thread across tabs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load messages when active session changes
+  // Load messages when the user switches to a different real session.
   useEffect(() => {
     if (!activeSessionId || activeSessionId.startsWith('temp-')) return;
+
+    if (skipMessageFetchRef.current) {
+      skipMessageFetchRef.current = false;
+      return;
+    }
+
+    // Already have messages in memory for this session — don't wipe on remount races.
+    const existing = chatMemory?.sessions.find((s) => s.id === activeSessionId)
+      ?? sessions.find((s) => s.id === activeSessionId);
+    if (existing && existing.messages.length > 0) return;
+
+    let cancelled = false;
     const loadMessages = async () => {
       try {
-        const res = await apiFetch(`/api/chat/sessions/${activeSessionId}/messages`);
-        if (res.ok) {
-          const data = await res.json();
-          const mapped: ChatMessage[] = data.map((m: any) => ({
-            id: m.id,
-            sender: m.sender === 'user' ? 'user' : 'ai',
-            text: m.text,
-            timestamp: m.timestamp
-          }));
-          setSessions(prev => prev.map(s =>
+        const mapped = await fetchMessagesForSession(activeSessionId);
+        if (cancelled) return;
+        setSessions((prev) =>
+          prev.map((s) =>
             s.id === activeSessionId ? { ...s, messages: mapped } : s
-          ));
-        }
-      } catch(e) {
+          )
+        );
+      } catch (e) {
         console.error('Failed to load messages', e);
       }
     };
     loadMessages();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId]);
 
   // Get active session messages
@@ -228,7 +322,12 @@ export default function ChatConsultantPage() {
           });
         });
 
-        if (realSessionId) {
+        if (realSessionId && realSessionId !== currentSessionId) {
+          // Avoid a redundant fetch that can overwrite optimistic messages.
+          skipMessageFetchRef.current = true;
+          setActiveSessionId(realSessionId);
+        } else if (realSessionId && realSessionId !== activeSessionId) {
+          skipMessageFetchRef.current = true;
           setActiveSessionId(realSessionId);
         }
 
@@ -376,7 +475,17 @@ export default function ChatConsultantPage() {
       {/* Main Conversational Panel */}
       <div className="chat-main-area" style={{ width: '100%' }}>
         
-        {hasMessages ? (
+        {isLoadingHistory && !hasMessages ? (
+          <div className="chat-greeting-wrap">
+            <motion.h2
+              className="chat-greeting-title"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              Loading conversation...
+            </motion.h2>
+          </div>
+        ) : hasMessages ? (
           /* Message Feed */
           <>
             <div className="chat-history-wrap">
@@ -476,7 +585,7 @@ export default function ChatConsultantPage() {
         )}
 
         {/* Static greeting presets */}
-        {!hasMessages && !isTyping && (
+        {!hasMessages && !isTyping && !isLoadingHistory && (
           <div className="chat-presets-bar">
             {greetingPresets.map((preset, idx) => (
               <button
